@@ -69,3 +69,12 @@ Managed Package v1 使用 Hub 的实际包管理器和本地发行测试数据�
 0.6.1 入房与席位 · 2026-11-15
 32 项 Node 测试通过。Chromium 与 WebKit 验证窄屏的房间号／密码同排、锁位点击范围、两个来宾同时入房或换位、房主固定、换位后重新准备、刷新找回换过的席位，以及开局后申请接管。
 四客户端 WebRTC 联机、WebKit Hub Runtime 与 Managed Package 通过回归。复测入口为 tests/seat-ui.mjs。
+
+0.6.2 多宿主兼容与 TT Android 修复 · 2026-11-15
+34 项 Node 测试通过。新增旧引擎的宏冲突保护，以及取消或自己的请求组装完成时立即清理临时宏。
+SillyTavern 1.14.0、1.15.0、1.16.0、1.17.0、1.18.0、1.19.0 均使用酒馆助手 4.11.3 导入成品。逐版验证四人姓名、卡片与预设中的 Persona 包裹、世界书主次条件和来宾输入的字面宏保护。另测 1.18.0 新引擎及 1.19.0 旧引擎。检查生成成功与请求失败后的原始宏。
+1.14.0 房主和 1.18.0 来宾通过本机 WebRTC 完成密码入房、切换聊天暂停、刷新续玩、个人状态栏和明确退房。如果 WebView 缺少原生 Popover，两个工具悬浮球使用普通浮层。模拟缺少该能力时重复执行同一联机流程。WebKit 上的 Hub Runtime 与 Hub Managed Package 分别通过。
+源码更新前在冻结快照重复执行上述测试。Chromium 三人席位流程通过。WebKit 三人并发入房曾出现来宾 WebRTC 握手超时，后续复测通过。此用例的稳定性仍待确认。
+Android 模拟器上的 TauriTavern 2.4.0 原生 WebView 导入成品，使用同一 WebView 中独立的来宾连接验证密码、双人行动、实际模型请求构造与各自状态栏。回复在聊天补全请求边界固定。直接调用 TT 原生生成接口时，本机假模型未收到请求，基线调用也超时。原生模型服务、iOS、macOS 和跨公网仍待验收。
+macOS Safari 的本地验收仅确认酒馆助手载入成品、打开大厅并显示 0.6.2。真实外部模型长回合、跨运营商及复杂 NAT／TURN 环境仍待验收。
+先运行 npm ci、npm test 和 npm run build。逐版复测运行 node tests/tavern-compatibility.mjs，使用临时副本，默认连接 18914 至 18919。可传入“地址,版本,引擎”，引擎使用 new 或 legacy。运行 node tests/tavern-room-resume.mjs 时可设置 MIEMIE_MACRO_ENGINE=legacy 或 MIEMIE_NO_POPOVER=1。席位并发用例为 node tests/seat-ui.mjs，可设置 MIEMIE_UI_BROWSER=webkit。

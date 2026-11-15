@@ -29,7 +29,9 @@ try {
     page.on('dialog', dialog => dialog.accept());
     await page.addInitScript(name => {
       const description = 'Test Persona';
-      const context = {name1:name, characterId:0, chat:[], getCurrentChatId:()=> 'fixture', macros:{engine:{addPreProcessor(){}}},
+      const context = {name1:name, characterId:0, chat:[], getCurrentChatId:()=> 'fixture',
+        eventTypes:{CHAT_COMPLETION_SETTINGS_READY:'prompt'},
+        macros:{engine:{addPreProcessor(){},removePreProcessor(){}}},
         powerUserSettings:{experimental_macro_engine:true, persona_description:description, personas:{test:name}, persona_descriptions:{test:{description}}}};
       window.SillyTavern = {getContext:()=>context};
       window.TavernHelper = {generate:async()=>''};

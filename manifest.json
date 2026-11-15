@@ -3,7 +3,7 @@
   "apiVersion": 2,
   "id": "miemie.multiplayer-lobby",
   "name": "咩咩联机大厅",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "author": "SheepSheep",
   "description": "2–4 人联机 RP，支持队伍聊天室、公开与暗行动及个人状态栏。",
   "entry": "lobby.js",

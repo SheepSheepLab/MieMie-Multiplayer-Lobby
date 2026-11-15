@@ -5,6 +5,7 @@ import {PeerServer} from 'peer';
 
 const hostOrigin = process.env.MIEMIE_HOST_TAVERN ?? 'http://127.0.0.1:18831';
 const guestOrigin = process.env.MIEMIE_GUEST_TAVERN ?? 'http://127.0.0.1:18832';
+const newEngine = process.env.MIEMIE_MACRO_ENGINE !== 'legacy';
 assert.notEqual(hostOrigin, guestOrigin, 'Use two disposable Tavern installations');
 const metadata = JSON.parse(await readFile('dist/MieMie-Extension-update.json'));
 const script = JSON.parse(await readFile('dist/' + metadata.asset.name));
@@ -27,6 +28,21 @@ try {
     page.setDefaultTimeout(15000);
     page.on('pageerror', error => errors.push(error.message));
     page.on('dialog', dialog => dialog.accept());
+    if (process.env.MIEMIE_NO_POPOVER === '1') {
+      await page.addInitScript(() => {
+        const matches = Element.prototype.matches;
+        Element.prototype.matches = function (selector) {
+          if (selector.includes(':popover-open')) throw new DOMException('Unsupported selector', 'SyntaxError');
+          return matches.call(this, selector);
+        };
+        delete HTMLElement.prototype.showPopover;
+        delete HTMLElement.prototype.hidePopover;
+      });
+    }
+    const onboardingSelector = 'dialog[open]:has(.onboarding) .popup-button-ok';
+    const onboarding = page.locator(onboardingSelector);
+    const dismissOnboarding = () => page.evaluate(selector => document.querySelector(selector)?.click(), onboardingSelector);
+    await page.addLocatorHandler(onboarding, dismissOnboarding);
     await page.route('**/*', route => {
       const url = new URL(route.request().url());
       if (url.origin === origin && url.pathname === '/api/backends/chat-completions/generate') {
@@ -42,18 +58,17 @@ try {
     await page.goto(origin);
     async function ready() {
       await page.waitForFunction(() => window.SillyTavern && window.TavernHelper, null, {timeout: 60000});
-      const okay = page.locator('dialog[open] .popup-button-ok');
-      if (await okay.isVisible()) await okay.click();
-      await page.waitForFunction(async () => (await import('/script.js')).settingsReady);
+      await dismissOnboarding();
+      await page.waitForFunction(() => !!SillyTavern.getContext().powerUserSettings?.personas);
     }
     await ready();
-    await page.evaluate(async ({isHost, fixtureCard, cardSecret}) => {
+    await page.evaluate(async ({isHost, fixtureCard, cardSecret, newEngine}) => {
       const st = await import('/script.js');
       const c = SillyTavern.getContext();
       const name = isHost ? '房主测试身份' : '来宾测试身份';
       const personaId = 'miemie-test-persona.png';
       const profile = '联机测试人员';
-      Object.assign(c.powerUserSettings, {persona_description: profile, experimental_macro_engine: true});
+      Object.assign(c.powerUserSettings, {persona_description: profile, experimental_macro_engine: newEngine});
       c.powerUserSettings.personas[personaId] = name;
       c.powerUserSettings.persona_descriptions[personaId] = {description: profile};
       if (!isHost) return;
@@ -73,7 +88,7 @@ try {
       st.setOnlineStatus('Valid');
       const oai = await import('/scripts/openai.js');
       Object.assign(oai.oai_settings, {chat_completion_source: 'custom', custom_url: 'http://127.0.0.1:18795/v1', custom_model: 'fixture', stream_openai: false});
-    }, {isHost, fixtureCard, cardSecret});
+    }, {isHost, fixtureCard, cardSecret, newEngine});
     await page.evaluate(artifact => TavernHelper.replaceScriptTrees([artifact], {type: 'global'}), script);
     await page.waitForFunction(() => window.__miemieMultiplayerLobbyV1);
     const main = page.locator('.mm-main');
@@ -164,18 +179,18 @@ try {
   await guest.main.locator('.mm-seat.mine').filter({hasText:'来宾测试身份'}).waitFor();
   assert.match(await guest.main.locator('.mm-public-scene').innerText(), /轮流搜查车厢/);
   assert.equal(await guest.page.evaluate(password => JSON.stringify(sessionStorage).includes(password), fixturePassword), false);
-  await host.page.evaluate(async ({chat, fixtureCard}) => {
+  await host.page.evaluate(async ({chat, fixtureCard, newEngine}) => {
     const st = await import('/script.js');
     const index = SillyTavern.getContext().characters.findIndex(card => card.name === fixtureCard);
     await st.selectCharacterById(index);
     await SillyTavern.getContext().openCharacterChat(chat);
-    SillyTavern.getContext().powerUserSettings.experimental_macro_engine = true;
+    SillyTavern.getContext().powerUserSettings.experimental_macro_engine = newEngine;
     document.querySelector('#main_api').value = 'openai';
     document.querySelector('#main_api').dispatchEvent(new Event('change', {bubbles: true}));
     st.setOnlineStatus('Valid');
     const oai = await import('/scripts/openai.js');
     Object.assign(oai.oai_settings, {chat_completion_source: 'custom', custom_url: 'http://127.0.0.1:18795/v1', custom_model: 'fixture', stream_openai: false});
-  }, {chat: originalChat, fixtureCard});
+  }, {chat: originalChat, fixtureCard, newEngine});
 
   await openTool(host, 'action');
   await actionClick(host, 'generate');

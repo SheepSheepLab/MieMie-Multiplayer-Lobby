@@ -28,7 +28,7 @@ const identity={schemaVersion:1,productId,version,scriptId,repository};
 const marker='// MieMie-Extension-Build: '+JSON.stringify(identity)+'\n';
 const content=marker+'/*!\n'+notices.replaceAll('*/','* /')+'\n*/\n'+await readFile('dist/lobby.js','utf8');
 await writeFile('dist/lobby.js',content);
-const artifact={type:'script',enabled:true,name:`${PRODUCT.name} ${version}`,id:scriptId,content,info:'SheepSheep · 2–4 人联机 RP。房主需 ST 1.19 新宏引擎与酒馆助手 4.11.3+。PeerJS 公共信令；复杂网络需自备 TURN。',button:{enabled:false,buttons:[]},data:{},export_with:{data:true,button:true}};
+const artifact={type:'script',enabled:true,name:`${PRODUCT.name} ${version}`,id:scriptId,content,info:'SheepSheep · 2–4 人联机 RP。支持 SillyTavern 1.14–1.19 与酒馆助手 4.11.3。房主使用聊天补全接口。',button:{enabled:false,buttons:[]},data:{},export_with:{data:true,button:true}};
 const name=`${PRODUCT.artifactPrefix}-Extension-${version}.json`;
 const bytes=Buffer.from(JSON.stringify(artifact,null,2)+'\n');
 if(bytes.length>16*1024*1024)throw Error('Extension package exceeds the Hub limit');

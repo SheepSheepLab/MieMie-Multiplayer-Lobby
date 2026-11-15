@@ -3,6 +3,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 const layers = new WeakMap<HTMLElement, {show(orb?: HTMLButtonElement): void; release(orb: HTMLButtonElement): void}>();
 
+export function supportsWindowLayer(node: HTMLElement) {
+  return typeof node.showPopover === 'function'
+    && typeof node.hidePopover === 'function'
+    && !!node.ownerDocument.defaultView?.CSS?.supports('selector(:popover-open)');
+}
+
 export function raiseNativeWindow(panel: HTMLElement, orb: HTMLButtonElement) {
   layers.get(panel)?.show(orb);
 }
@@ -14,7 +20,7 @@ export function releaseNativeWindow(panel: HTMLElement, orb: HTMLButtonElement) 
 // Manual popovers preserve the panel's original ancestry and scoped styles.
 // From back to front: shield, current orb at its existing dock, then panel.
 export function observeWindowLayer(host: Window, panel: HTMLElement): () => void {
-  if (typeof panel.showPopover !== 'function' || panel.hasAttribute('popover')) return () => {};
+  if (!supportsWindowLayer(panel) || panel.hasAttribute('popover')) return () => {};
   const doc = panel.ownerDocument;
   const style = doc.createElement('style');
   style.textContent = `

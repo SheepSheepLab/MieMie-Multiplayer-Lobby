@@ -1,11 +1,19 @@
 # 咩咩联机大厅 / MieMie Multiplayer Lobby
 
 咩咩联机大厅是开发中的 2–4 人 SillyTavern AIRP 工具。由房主运行 AI，队友共享剧情并接收各自的状态栏。房间支持公开与暗行动、队伍聊天及断线恢复。
-当前开发基线：0.6.1。唯一版本源为 package.json；构建器校验锁文件及 Manifest，并生成脚本名称和文件名，UI 读取同一版本。
+当前开发基线：0.6.2。唯一版本源为 package.json；构建器校验锁文件及 Manifest，并生成脚本名称和文件名，UI 读取同一版本。
 产品作者及生态发起人为 SheepSheep。SheepSheepLab 是官方开发、维护与发布命名空间。
 官方源码仓库为 [SheepSheepLab/MieMie-Multiplayer-Lobby](https://github.com/SheepSheepLab/MieMie-Multiplayer-Lobby)。仓库目前用于开发源码托管。
-本地执行 `npm ci` 和 `npm run build` 后，可将生成的 `dist/MieMie-Multiplayer-Lobby-Extension-0.6.1.json` 导入酒馆助手全局脚本。在酒馆笑脸中选择已保存的 Persona。当前仍需验证不同公网网络间的互通和实际模型长回合。
+本地执行 `npm ci` 和 `npm run build` 后，可将生成的 `dist/MieMie-Multiplayer-Lobby-Extension-0.6.2.json` 导入酒馆助手全局脚本。在酒馆笑脸中选择已保存的 Persona。当前仍需验证不同公网网络间的互通和实际模型长回合。
 0.5.1 的大厅主标题与其他咩咩工具对齐，副标题实时显示当前打开的单人角色聊天。
+
+## 酒馆版本与运行条件
+
+- SillyTavern 1.14–1.19，已逐版验证 1.14.0、1.15.0、1.16.0、1.17.0、1.18.0 和 1.19.0，搭配酒馆助手 4.11.3。房主使用聊天补全接口，脚本自动适配当前启用的宏引擎。
+- TauriTavern（TT 酒馆）2.4.0 的 Android 原生 WebView 已通过成品导入、密码入房、行动提交、多人请求构造及个人状态栏分发验收。测试在模型请求入口返回固定回复，TT 原生模型接口及 iOS、macOS 仍待验收。
+- 联机需要客户端支持 WebRTC、WebSocket 与安全环境中的 Web Crypto。浏览器版使用 HTTPS 或本机回环地址。
+
+逐版请求和跨版本联机的验收范围见 [测试记录](TESTING.txt)。
 
 ## 加入与换位
 
