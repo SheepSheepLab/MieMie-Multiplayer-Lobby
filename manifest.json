@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "apiVersion": 2,
+  "id": "miemie.multiplayer-lobby",
+  "name": "咩咩联机大厅",
+  "version": "0.6.1",
+  "author": "SheepSheep",
+  "description": "2–4 人联机 RP，支持队伍聊天室、公开与暗行动及个人状态栏。",
+  "entry": "lobby.js",
+  "repository": "https://github.com/SheepSheepLab/MieMie-Multiplayer-Lobby",
+  "homepage": "https://github.com/SheepSheepLab/MieMie-Multiplayer-Lobby",
+  "license": "GPL-3.0-or-later",
+  "icon": "assets/multiplayer-lobby-icon.png",
+  "hubApi": {
+    "min": 2,
+    "max": 2
+  },
+  "contributes": {
+    "launcher": {
+      "title": "咩咩联机大厅",
+      "icon": "🎮"
+    }
+  }
+}

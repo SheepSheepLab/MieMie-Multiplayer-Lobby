@@ -1,0 +1,20 @@
+0.4.1 素材增量：assets/multiplayer-lobby-icon.png 由 SheepSheep 于 2026-11-14 提供并指定；Reserved Brand Asset，不采用 GPL。嵌入 JSON 不改变该区分。原代码贡献与依赖许可保持不变。
+
+咩咩联机大厅 0.1.0
+产品 author 为 SheepSheep，官方开发命名空间为 SheepSheepLab。
+
+展示模块改编自 MieMie Preset Manager 1.0.0，commit f34d39966a9cb8d3576002c67e6deea90b08bef8。原文件版权行完整保留。预设管理项目 louisSSR 的贡献与版权归属保留，逐文件来源见 provenance.json。其 Native Launcher 与 Floating Presentation 原始来源为 MieMie Polisher 1.2.1，commit 5a0a5cf9f4ac7cf5dbb9dac0134d307ad1caa9d1，GPL-3.0-or-later。
+修改涉及独立产品身份、存储键与 DOM/CSS 命名空间。未将原项目业务模块纳入联机大厅。
+
+PeerJS 1.5.5 及依赖许可随构建交付。
+界面采用独立绘制的游戏大厅、席位及聊天分区布局，未复制第三方图像素材。视觉检索参考：
+https://www.behance.net/gallery/177349511/Gaming-Dashboard
+https://www.behance.net/gallery/206837249/LOBBY-UIUX-case-study
+
+PeerJS 1.5.5: MIT, Copyright PeerJS contributors; see licenses/peerjs-LICENSE.
+@msgpack/msgpack 2.8.0: ISC; see licenses/msgpack-LICENSE.
+eventemitter3 4.0.7: MIT; see licenses/eventemitter3-LICENSE.
+peerjs-js-binarypack 2.1.0: MIT; see licenses/peerjs-js-binarypack-LICENSE.
+webrtc-adapter 9.0.6: BSD-3-Clause; see licenses/webrtc-adapter-LICENSE.md.
+sdp 3.2.3: MIT; see licenses/sdp-LICENSE.
+Full license text and copyright statements are retained in those files.

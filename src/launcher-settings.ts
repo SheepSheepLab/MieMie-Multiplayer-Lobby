@@ -1,0 +1,19 @@
+import ICON from '../assets/multiplayer-lobby-icon.png';
+import {LAUNCHER_HOLD_MS, LAUNCHER_MIN_SIZE, LAUNCHER_MAX_SIZE, type LauncherAppearance} from './presentation/launcher-appearance';
+
+// Product-owned settings layer, following Preset Manager's settings/back hierarchy.
+export function createLauncherSettings(panel: HTMLElement, frame: HTMLElement, appearance: LauncherAppearance) {
+ const doc=panel.ownerDocument, layer=doc.createElement('div');
+ layer.className='mm-settings-layer';layer.hidden=true;
+ layer.innerHTML=`<section class="mm-settings-dialog" id="mm-lobby-launcher-settings" role="dialog" aria-modal="true" aria-labelledby="mm-lobby-settings-title"><h3 id="mm-lobby-settings-title" tabindex="-1">悬浮球设置</h3><div class="mm-settings-body"><section class="mm-settings-card"><div class="mm-settings-heading"><strong>悬浮球</strong><small>外观与手势</small></div><div class="mm-size-row"><div class="mm-size-fields"><label for="mm-lobby-size">悬浮球大小 <output data-size-value></output></label><input id="mm-lobby-size" aria-label="悬浮球大小" type="range" min="${LAUNCHER_MIN_SIZE}" max="${LAUNCHER_MAX_SIZE}" data-setting="size"><div class="mm-size-stops" aria-hidden="true"><span>50%</span><span>100%</span><span>150%</span></div></div><div class="mm-size-preview" aria-hidden="true"></div></div><div class="mm-mode-row"><div><strong>潜航模式</strong><p id="mm-lobby-tucked-hint">贴边半藏，悬停时探出。向屏幕内侧拉动，亮起后松手打开；原地长按 ${LAUNCHER_HOLD_MS/1000} 秒可拖动换位。</p></div><button type="button" role="switch" aria-label="潜航模式" aria-describedby="mm-lobby-tucked-hint" data-setting="tucked"><span></span></button></div><button type="button" data-act="preview-opening" class="mm-preview-opening">预览开局仪式</button><p class="mm-setting-notice" role="status" hidden></p></section></div><div class="mm-settings-actions"><button type="button" data-settings-back>返回</button></div></section>`;
+ panel.append(layer);
+ const size=layer.querySelector<HTMLInputElement>('[data-setting="size"]')!, toggle=layer.querySelector<HTMLButtonElement>('[data-setting="tucked"]')!, preview=layer.querySelector<HTMLElement>('.mm-size-preview')!, notice=layer.querySelector<HTMLElement>('.mm-setting-notice')!;
+ const image=doc.createElement('img');image.src=ICON;image.alt='';image.draggable=false;preview.append(image);
+ function paint(){const value=appearance.get();size.value=String(value.size);size.setAttribute('aria-valuetext',`${value.size}%`);layer.querySelector('[data-size-value]')!.textContent=`${value.size}%`;preview.style.setProperty('--mm-preview-size',`${value.size*.4}px`);preview.toggleAttribute('data-tucked',value.tucked);toggle.setAttribute('aria-checked',String(value.tucked));}
+ function apply(value: Parameters<LauncherAppearance['set']>[0]){const saved=appearance.set(value);notice.hidden=saved;notice.textContent=saved?'':'当前页面已应用，浏览器无法保存此设置。';paint();}
+ size.addEventListener('input',()=>apply({size:size.valueAsNumber}));toggle.addEventListener('click',()=>apply({tucked:!appearance.get().tucked}));
+ function close(){if(layer.hidden)return false;layer.hidden=true;frame.inert=false;frame.querySelector<HTMLButtonElement>('[data-act="settings"]')?.focus({preventScroll:true});return true;}
+ layer.querySelector('[data-settings-back]')!.addEventListener('click',close);
+ layer.addEventListener('keydown',e=>{if(e.key!=='Tab')return;const items=[size,toggle,layer.querySelector<HTMLButtonElement>('.mm-preview-opening')!,layer.querySelector<HTMLButtonElement>('[data-settings-back]')!];const first=items[0],last=items.at(-1)!;if(e.shiftKey&&(doc.activeElement===first||!items.includes(doc.activeElement as any))){e.preventDefault();last.focus();}else if(!e.shiftKey&&doc.activeElement===last){e.preventDefault();first.focus();}});
+ return {open(){paint();layer.hidden=false;frame.inert=true;layer.querySelector<HTMLElement>('h3')!.focus({preventScroll:true});},close,isOpen:()=>!layer.hidden,dispose:()=>layer.remove()};
+}

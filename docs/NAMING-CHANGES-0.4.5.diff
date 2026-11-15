@@ -1,0 +1,119 @@
+--- before/build.mjs
++++ after/build.mjs
+@@ -1,5 +1,12 @@
++import {PRODUCT_IDENTITY as PRODUCT} from './product.mjs';
+ import {build} from 'esbuild';
+ import {mkdir,readFile,writeFile,copyFile, readdir} from 'node:fs/promises';
++const pkg=JSON.parse(await readFile('package.json','utf8'));
++const lock=JSON.parse(await readFile('package-lock.json','utf8'));
++const version=pkg.version;
++if(!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version))throw Error('Product version must be plain MAJOR.MINOR.PATCH');
++if(pkg.name!==PRODUCT.packageName||pkg.author!==PRODUCT.author||pkg.repository!==PRODUCT.repository||pkg.license!=='GPL-3.0-or-later')throw Error('Product identity mismatch');
++if(lock.name!==pkg.name||lock.version!==version||lock.packages[''].name!==pkg.name||lock.packages[''].version!==version)throw Error('Lockfile identity mismatch');
+ await mkdir('dist',{recursive:true});
+ await build({entryPoints:['src/main.ts'],bundle:true,format:'iife',target:['safari16','chrome110'],outfile:'dist/lobby.js',loader:{'.css':'text','.png':'dataurl'},legalComments:'eof',minify:false});
+ await mkdir('dist/licenses',{recursive:true});
+@@ -9,8 +16,8 @@
+ notices+='\n\nGPL-3.0-or-later\n'+await readFile('LICENSE','utf8');
+ const content='/*!\n'+notices.replaceAll('*/','* /')+'\n*/\n'+await readFile('dist/lobby.js','utf8');
+ await writeFile('dist/lobby.js',content);
+-const artifact={type:'script',enabled:true,name:'咩咩联机大厅 0.4.5 测试版',id:'4f0fd529-265d-47ba-9001-07ab3b830b2b',content,info:'SheepSheep · 2–4 人联机 RP 测试版。房主需 ST 1.19 新宏引擎与酒馆助手 4.11.3+。PeerJS 公共信令；复杂网络需自备 TURN。请先在独立聊天实测。',button:{enabled:false,buttons:[]},data:{},export_with:{data:true,button:true}};
+-await writeFile('dist/MieMie-Multiplayer-Lobby-0.4.5.json',JSON.stringify(artifact,null,2));
++const artifact={type:'script',enabled:true,name:`${PRODUCT.name} ${version} 测试版`,id:'4f0fd529-265d-47ba-9001-07ab3b830b2b',content,info:'SheepSheep · 2–4 人联机 RP 测试版。房主需 ST 1.19 新宏引擎与酒馆助手 4.11.3+。PeerJS 公共信令；复杂网络需自备 TURN。请先在独立聊天实测。',button:{enabled:false,buttons:[]},data:{},export_with:{data:true,button:true}};
++await writeFile(`dist/${PRODUCT.artifactPrefix}-${version}.json`,JSON.stringify(artifact,null,2));
+ await copyFile('LICENSE','dist/LICENSE');
+ await copyFile('THIRD_PARTY_NOTICES.txt','dist/THIRD_PARTY_NOTICES.txt');
+ console.log('Built importable Tavern Helper script');
+--- before/README.txt
++++ after/README.md
+@@ -1,3 +1,12 @@
++当前产品：咩咩联机大厅 / MieMie Multiplayer Lobby
++当前开发基线：0.4.5。唯一版本源为 package.json；构建器校验锁文件并生成脚本名称、文件名，UI 从相同版本源读取。
++产品作者：SheepSheep；官方维护命名空间：SheepSheepLab。
++规划仓库：https://github.com/SheepSheepLab/MieMie-Multiplayer-Lobby（目标地址，不代表已经创建或发行）。
++当前安装文件：dist/MieMie-Multiplayer-Lobby-0.4.5.json，仍为独立酒馆助手脚本。身份从酒馆笑脸中的已保存角色列表选择，不在大厅中重新编辑。
++Hub Runtime Compatibility：尚未验收；Managed Package Compatibility：未实现。没有正式 Manifest、机器更新元数据或正式 Release。
++命名、稳定身份和版本规则见 docs/PRODUCT-IDENTITY.md、docs/VERSIONING.md；本轮校准结果见 docs/NAMING-AUDIT-0.4.5.md。
++以下内容为各开发阶段的历史说明，保留原始版本与当时结论，不代表当前版本的新验收结果。
++
+ 0.4.1：接入 SheepSheep 提供的正式图标。代码 GPL-3.0-or-later；指定 PNG 单独适用 ASSETS-LICENSE.md，品牌规则见 BRAND.md。历史记录保持原义。
+ 
+ 0.4.0 交互重设计：主大厅仅负责建房/加入、席位、准备和房间管理；新增独立回合行动球与聊天室球。操作轮到自己时金色火光提示，新剧情蓝光提示，聊天显示未读数。当前使用 QUICKSTART-0.4.0.txt；设计与测试范围见 DESIGN-0.4.0.txt。以下保留历史记录。
+--- before/product-identity.ts
++++ after/src/presentation/product-identity.ts
+@@ -1,2 +1,4 @@
+-export const MULTIPLAYER_LOBBY_PRODUCT = Object.freeze({name:'咩咩联机大厅',launcherName:'咩咩联机大厅',version:'0.4.5'});
++import {PRODUCT_IDENTITY} from '../../product.mjs';
++import packageInfo from '../../package.json';
++export const MULTIPLAYER_LOBBY_PRODUCT = Object.freeze({...PRODUCT_IDENTITY,version:packageInfo.version});
+ export const MULTIPLAYER_LOBBY_DOCK_KEY='miemie_multiplayer_lobby_dock_v1';
+--- /dev/null
++++ b/product.mjs
+@@ -0,0 +1,10 @@
++// Product display metadata. Protocol and persisted identities are maintained separately.
++export const PRODUCT_IDENTITY = Object.freeze({
++  name: '咩咩联机大厅',
++  englishName: 'MieMie Multiplayer Lobby',
++  launcherName: '咩咩联机大厅',
++  author: 'SheepSheep',
++  repository: 'https://github.com/SheepSheepLab/MieMie-Multiplayer-Lobby',
++  packageName: 'miemie-multiplayer-lobby',
++  artifactPrefix: 'MieMie-Multiplayer-Lobby',
++});
+--- /dev/null
++++ b/.gitignore
+@@ -0,0 +1,8 @@
++node_modules/
++dist/
++test-results/
++.env
++.env.*
++!.env.example
++*.log
++.DS_Store
+--- /dev/null
++++ b/docs/PRODUCT-IDENTITY.md
+@@ -0,0 +1,28 @@
++# 产品身份与工程命名
++
++中文产品名：咩咩联机大厅。英文产品名：MieMie Multiplayer Lobby。
++工程根目录与规划 GitHub 仓库名：`MieMie-Multiplayer-Lobby`。
++Repository / Homepage 目标：`https://github.com/SheepSheepLab/MieMie-Multiplayer-Lobby`。
++npm 包名：`miemie-multiplayer-lobby`。产品 Author：`SheepSheep`；维护命名空间：`SheepSheepLab`。
++
++`product.mjs` 是展示身份来源；既有 `src/presentation/product-identity.ts` 继续提供运行时入口，版本来自 `package.json`。UI 短标题保留 `MIEMIE MULTIPLAYER`，入口名及所有视觉保持现状。
++源码模块继续采用现有小写连字符命名；标准工程文件使用 `package.json`、`package-lock.json`、`build.mjs`、`README.md`、`BRAND.md`、`LICENSE`。不把每个内部模块改成产品全名。历史文档、测试视频及旧安装包保留原名、原语义。
++
++## 稳定身份
++
++- Tavern Helper Script ID：`4f0fd529-265d-47ba-9001-07ab3b830b2b`。
++- 单实例标识：`__miemieMultiplayerLobbyV1`。
++- 房主存档：`mm-lobby-host-v1`。
++- 来宾凭据前缀：`mm-lobby-token:`、`mm-lobby-token3:`；房主指纹前缀：`mm-lobby-pin:`。
++- 悬浮球设置：`miemie_multiplayer_lobby_launcher_appearance_v1`；主球位置：`miemie_multiplayer_lobby_dock_v1`。
++- 长邀请 `MM1`、短号完整邀请 `MM3`、Peer 身份与网络消息格式均保持。
++
++上述标识不随展示名、目录名和产品版本变更。业务及辅助窗口其他存储键也未改动。
++目标 Extension ID `miemie.multiplayer-lobby` 仅为未来适配规划，当前没有正式 Manifest 或 Runtime 注册，不能冒充已经生效的 ID。
++
++## 兼容与授权
++
++当前是 Standalone 酒馆助手脚本。Runtime Compatibility 未验收；Managed Package Compatibility 未实现，两者分别验证。
++未来适配以 Hub Runtime API2 与 Package / Manifest / Metadata / Build Identity Schema v1 为目标，不据此修改现有房间协议。
++当前文件名为 `MieMie-Multiplayer-Lobby-<version>.json`；将来正式机器包才使用 `MieMie-Multiplayer-Lobby-Extension-<version>.json` 及 `MieMie-Extension-update.json`。
++软件为 GPL-3.0-or-later；图标与品牌遵循独立 ASSETS-LICENSE.md、BRAND.md。复用展示模块的真实贡献和许可证继续保留在 THIRD_PARTY_NOTICES.txt、provenance.json 与原代码中。
+--- /dev/null
++++ b/docs/VERSIONING.md
+@@ -0,0 +1,12 @@
++# 版本规范
++
++新产品版本只使用无前导零的 `MAJOR.MINOR.PATCH`。禁止 alpha、beta、dev、hub、build 后缀及加号元数据。
++PATCH 用于修复与小范围改进，MINOR 用于新增功能或阶段版本，MAJOR 按批准的兼容性决策升级。Git Tag 为 `v<version>`；Pre-release 是 GitHub 状态，不是版本字符串。
++
++唯一版本源为 package.json。锁文件必须一致；构建器在生成前校验格式与身份，脚本名称、ASCII 安装文件名及 UI 均读取该版本。脚本名称中的“测试版”仅描述当前交付状态，不属于产品版本字段。
++
++本轮实际基线为 0.4.5：此前在 0.4.4 基础上完成设置悬停和点击关闭、循环开局仪式，并已在备用账号酒馆启用。Owner 任务书中的 0.4.4 是截图时点；依任务书“以实际代码审计为准”保留 0.4.5，不倒退或提升到 0.5.0。
++本轮仅为未正式发行开发基线的命名整理。没有执行 Commit、Tag、Release 或远程发布。
++已正式发布的附件不得同版本静默替换；未来正式发行前独立检查远程历史与发布状态。
++
++产品版本与存储、房间协议、Runtime API 及机器 Schema 版本相互独立。不得因产品升版自动更改协议或 Schema。

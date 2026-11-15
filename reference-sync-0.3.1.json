@@ -1,0 +1,26 @@
+{
+  "date": "2026-11-14",
+  "repositories": [
+    {
+      "repository": "https://github.com/SheepSheepLab/MieMie-Hub",
+      "commit": "03004a89a3f12722e9b95f0622a466c63438aee1",
+      "version": "1.0.2",
+      "fullClone": true,
+      "clean": true
+    },
+    {
+      "repository": "https://github.com/SheepSheepLab/MieMie-Polisher",
+      "commit": "1490bb80c53de6e215cc5f655e1c1f73b1562d11",
+      "version": "1.5.0",
+      "fullClone": true,
+      "clean": true
+    },
+    {
+      "repository": "https://github.com/SheepSheepLab/MieMie-Preset-Manager",
+      "commit": "f34d39966a9cb8d3576002c67e6deea90b08bef8",
+      "version": "1.0.0",
+      "fullClone": true,
+      "clean": true
+    }
+  ]
+}

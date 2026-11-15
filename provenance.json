@@ -1,0 +1,32 @@
+[
+  {
+    "path": "native-launcher.ts",
+    "sha256": "4943155750beb38e108dd5e276eafa39aff1e811212276c48234beb84b97f4f0",
+    "source": "https://github.com/SheepSheepLab/MieMie-Preset-Manager/blob/f34d39966a9cb8d3576002c67e6deea90b08bef8/native-launcher.ts"
+  },
+  {
+    "path": "native-floating-presentation.ts",
+    "sha256": "61b2001255527dada129d5e7e0c47f50be863b92b37b71ec319f659f0c73d1c1",
+    "source": "https://github.com/SheepSheepLab/MieMie-Preset-Manager/blob/f34d39966a9cb8d3576002c67e6deea90b08bef8/native-floating-presentation.ts"
+  },
+  {
+    "path": "presentation-styles.ts",
+    "sha256": "79c24c7f579b1d0fbb90565a01964b18d4c3a71b797db805afcf8b347cc216dc",
+    "source": "https://github.com/SheepSheepLab/MieMie-Preset-Manager/blob/f34d39966a9cb8d3576002c67e6deea90b08bef8/presentation-styles.ts"
+  },
+  {
+    "path": "window-layer.ts",
+    "sha256": "b607dfcfe4aa59fa64ab94c3ae2485e7e45fe5ae42d56924512ba6694f3e37a7",
+    "source": "https://github.com/SheepSheepLab/MieMie-Preset-Manager/blob/f34d39966a9cb8d3576002c67e6deea90b08bef8/window-layer.ts"
+  },
+  {
+    "path": "icons.ts",
+    "sha256": "df88c0f6539489f827a9e617b6361fab2c6766a49b9a6330a04b338724ca2515",
+    "source": "https://github.com/SheepSheepLab/MieMie-Preset-Manager/blob/f34d39966a9cb8d3576002c67e6deea90b08bef8/icons.ts"
+  },
+  {
+    "path": "launcher-appearance.ts",
+    "sha256": "f36c9ab43516bdbefc0bb95092a8def3f546d12f9a246a394e96eec315e6c1f8",
+    "source": "https://github.com/SheepSheepLab/MieMie-Preset-Manager/blob/f34d39966a9cb8d3576002c67e6deea90b08bef8/launcher-appearance.ts"
+  }
+]

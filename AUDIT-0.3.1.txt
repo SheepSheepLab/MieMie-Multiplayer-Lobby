@@ -1,0 +1,24 @@
+咩咩联机大厅 0.3.1 · 核对与修正记录
+
+2026-11-14 完整克隆指定三个官方仓库（含 Git 历史），未修改它们的工作区或远端。精确提交与源码版本见 reference-sync-0.3.1.json。
+Hub 1.0.2 / Polisher 1.5.0 / Preset Manager 1.0.0。
+
+核对来源
+Hub：AGENTS、README、BRAND、Developer Guide、Launcher Protocol、Product Identity、Icon Guideline。
+Polisher：README、Compatibility、Hub API2、Application Presentation、legacy-tool.js 的界面入口与返回结构。
+Preset Manager：README、Contributing、Application Presentation、ui.ts 的设置/返回/焦点实现、styles.ts 的底部长条返回和模态层，以及既有 launcher 源码。
+Hub 部分入口指南仍标记 0.9.0 基线，当前 README/package 为 1.0.2；历史文档未追溯修改，也不据旧示例引入 API1。
+
+已修正
+1. 顶部 X 替换为右上角齿轮；悬浮球设置独立弹窗包含 50–150% 大小、预览、潜航开关与 0.9 秒手势说明。设置底部返回大厅，主窗口底部长条返回收起窗口，关闭不退出联机。
+2. 设置 DOM 独立于房间快照渲染。背景 inert、Tab 焦点循环、返回恢复焦点；Escape 只在本窗口拥有焦点时处理，一次返回一层，长按不连退。保留草稿、滚动和展开状态。
+3. 大厅 CSS 限定到自身根节点，避免 mm-message 等通用类污染其他工具。
+4. 房主创建/恢复捕获本次生命周期，异步身份生成、密码派生、信令分配和错误回调检查有效性；关闭后迟到连接销毁，旧失败不能终止新房间。断线重试计时器纳入清理。
+5. PeerJS 连接成功移除启动阶段 open/error 处理器，后续错误交由当前连接处理，不误销毁整个活动 Peer。
+6. UI dispose 幂等且移除自身键盘/pagehide 监听，旧实例不能删除新的全局实例标记。
+
+范围与兼容边界
+仍为独立酒馆助手测试脚本。Catalog 未投稿；Runtime Registration、Honeycomb、Surface、Native Window Hub 托管、Hub Back Handler、dual-mode 未接入；Managed Package 未实现。不可把本次 UI 对齐视为 Hub 任一 Gate 通过。
+保留原作者/贡献者/许可、稳定脚本 ID、房间与入口存储键，不重写历史发行文件。没有提交、推送或 Release。
+多人上下文临时宏钩子仍具有原首版全局生成作用域限制。预设管理的好感度、状态栏、工具调用等引擎与大厅同时启用的组合兼容未在本轮验收，不声称所有生态组合兼容。
+本轮测试范围见 TESTING.txt 的增量记录，旧版本结果保留原义。
