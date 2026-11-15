@@ -10,10 +10,11 @@ type ChatContext = {
   eventTypes?: Record<string, string>;
 };
 const characterEvents = ['CHAT_CHANGED', 'CHARACTER_EDITED', 'CHARACTER_RENAMED'];
+const personaEvents = ['PERSONA_CHANGED', 'PERSONA_CREATED', 'PERSONA_UPDATED', 'PERSONA_RENAMED', 'PERSONA_DELETED', 'SETTINGS_UPDATED'];
 const emptySubtitle = '请打开单人角色聊天';
 
 // Use the ecosystem's current-character label for the Tavern chat.
-export function createLobbyHeader(label: HTMLElement, getContext: () => ChatContext | undefined, onChatUpdate: () => void) {
+export function createLobbyHeader(label: HTMLElement, getContext: () => ChatContext | undefined, onChatUpdate: () => void, onPersonaUpdate: () => void) {
   let source: ChatEvents | undefined;
   let names: string[] = [];
 
@@ -38,6 +39,7 @@ export function createLobbyHeader(label: HTMLElement, getContext: () => ChatCont
   const readSubtitle = () => {
     updateSubtitle(readContext());
     onChatUpdate();
+    onPersonaUpdate();
   };
   return {
     refresh(active: boolean) {
@@ -45,7 +47,7 @@ export function createLobbyHeader(label: HTMLElement, getContext: () => ChatCont
       const context = readContext();
       updateSubtitle(context);
       const nextSource = context?.eventSource;
-      const nextNames = [...new Set(characterEvents.flatMap(key => context?.eventTypes?.[key] || []))];
+      const nextNames = [...new Set([...characterEvents,...personaEvents].flatMap(key => context?.eventTypes?.[key] || []))];
       if (source === nextSource && names.length === nextNames.length && names.every((name, index) => name === nextNames[index])) return;
       detach();
       if (typeof nextSource?.on !== 'function' || typeof nextSource.removeListener !== 'function') return;

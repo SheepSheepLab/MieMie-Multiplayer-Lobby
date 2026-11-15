@@ -9,7 +9,8 @@ const newEngine = process.env.MIEMIE_MACRO_ENGINE !== 'legacy';
 assert.notEqual(hostOrigin, guestOrigin, 'Use two disposable Tavern installations');
 const metadata = JSON.parse(await readFile('dist/MieMie-Extension-update.json'));
 const script = JSON.parse(await readFile('dist/' + metadata.asset.name));
-const fixtureCard = 'Room Resume Test Card';
+const fixtureCard = 'Room Resume Test Card ' + Date.now();
+const sideCard = fixtureCard + ' (other card)';
 const cardSecret = 'PRIVATE_CARD_CONTEXT_TEST_ONLY';
 const fixturePassword = 'test-room-password';
 let signalServer;
@@ -21,7 +22,7 @@ try {
     resolve();
   }));
   const network = {host: '127.0.0.1', port: signalServer.address().port, path: '/', secure: false, config: {iceServers: []}};
-  browser = await chromium.launch();
+  browser = await chromium.launch(process.env.MIEMIE_LOBBY_BROWSER === 'edge' ? {channel:'msedge'} : {});
   const errors = [], modelRequests = [];
   async function client(origin, isHost) {
     const page = await browser.newPage({viewport: {width: 1100, height: 950}, reducedMotion: 'reduce'});
@@ -43,6 +44,11 @@ try {
     const onboarding = page.locator(onboardingSelector);
     const dismissOnboarding = () => page.evaluate(selector => document.querySelector(selector)?.click(), onboardingSelector);
     await page.addLocatorHandler(onboarding, dismissOnboarding);
+    const nativeNotice = page.locator('dialog[open].popup:not(:has(.onboarding)):has(.popup-button-ok)').last();
+    await page.addLocatorHandler(nativeNotice, () => page.evaluate(() => {
+      const dialogs=[...document.querySelectorAll('dialog[open].popup:not(:has(.onboarding))')];
+      dialogs.at(-1)?.querySelector('.popup-button-ok')?.click();
+    }));
     await page.route('**/*', route => {
       const url = new URL(route.request().url());
       if (url.origin === origin && url.pathname === '/api/backends/chat-completions/generate') {
@@ -62,7 +68,7 @@ try {
       await page.waitForFunction(() => !!SillyTavern.getContext().powerUserSettings?.personas);
     }
     await ready();
-    await page.evaluate(async ({isHost, fixtureCard, cardSecret, newEngine}) => {
+    await page.evaluate(async ({isHost, fixtureCard, sideCard, cardSecret, newEngine}) => {
       const st = await import('/script.js');
       const c = SillyTavern.getContext();
       const name = isHost ? '房主测试身份' : '来宾测试身份';
@@ -72,14 +78,24 @@ try {
       c.powerUserSettings.personas[personaId] = name;
       c.powerUserSettings.persona_descriptions[personaId] = {description: profile};
       if (!isHost) return;
+      const createCard = async card => {
+        const result = await fetch('/api/characters/create', {method: 'POST', headers: {'X-CSRF-Token': c.getRequestHeaders()['X-CSRF-Token']}, body: card});
+        if (!result.ok) throw Error('Failed to create the test card');
+        await st.getCharacters();
+      };
+      if (!c.characters.some(card => card.name === sideCard)) {
+        const card = new FormData();
+        card.set('ch_name', sideCard);
+        card.set('first_mes', '另一张角色卡的开场');
+        await createCard(card);
+      }
       if (!c.characters.some(card => card.name === fixtureCard)) {
         const card = new FormData();
         card.set('ch_name', fixtureCard);
         card.set('first_mes', '开场正文');
         card.set('description', cardSecret);
-        const result = await fetch('/api/characters/create', {method: 'POST', headers: {'X-CSRF-Token': c.getRequestHeaders()['X-CSRF-Token']}, body: card});
-        if (!result.ok) throw Error('Failed to create the test card');
-        await st.getCharacters();
+        card.set('creator_notes', '地图资源分片测试。'.repeat(7000));
+        await createCard(card);
       }
       const index = SillyTavern.getContext().characters.findIndex(card => card.name === fixtureCard);
       await st.selectCharacterById(index);
@@ -88,7 +104,27 @@ try {
       st.setOnlineStatus('Valid');
       const oai = await import('/scripts/openai.js');
       Object.assign(oai.oai_settings, {chat_completion_source: 'custom', custom_url: 'http://127.0.0.1:18795/v1', custom_model: 'fixture', stream_openai: false});
-    }, {isHost, fixtureCard, cardSecret, newEngine});
+      const books=['Lobby Resource Fixture','Lobby Additional Fixture','Lobby Chat Fixture'];
+      for(const [index,book] of books.entries()){
+        if(!TavernHelper.getWorldbookNames().includes(book))await TavernHelper.createWorldbook(book,[]);
+        await TavernHelper.replaceWorldbook(book,[]);
+        await TavernHelper.createWorldbookEntries(book,[{
+          name:'地图秘密',enabled:true,strategy:{type:'constant',keys:[]},content:'LOBBY_IMPORTED_WORLD_ENTRY_'+index,
+        }]);
+      }
+      await TavernHelper.rebindCharWorldbooks('current',{primary:books[0],additional:[books[1]]});
+      await TavernHelper.rebindChatWorldbook('current',books[2]);
+      const scripts=TavernHelper.getScriptTrees({type:'character'});
+      if(!scripts.some(script=>script.name==='同步测试脚本')){
+        TavernHelper.replaceScriptTrees([...scripts,{name:'同步测试脚本',type:'script',enabled:true,
+          content:'window.parent.__miemieFixtureCardScript=true;'}],{type:'character'});
+      }
+      await TavernHelper.replaceTavernRegexes([{
+        id:crypto.randomUUID(),script_name:'同步测试正则',enabled:true,find_regex:'FIXTURE_NEVER_MATCH',
+        replace_string:'REPLACED',trim_strings:[],source:{ai_output:true},destination:{display:true,prompt:false},
+        run_on_edit:false,min_depth:null,max_depth:null,
+      }],{type:'character'});
+    }, {isHost, fixtureCard, sideCard, cardSecret, newEngine});
     await page.evaluate(artifact => TavernHelper.replaceScriptTrees([artifact], {type: 'global'}), script);
     await page.waitForFunction(() => window.__miemieMultiplayerLobbyV1);
     const main = page.locator('.mm-main');
@@ -127,6 +163,12 @@ try {
   await host.click('host');
   const code = await host.main.locator('.mm-invite').inputValue();
   assert.match(code, /^\d{6}$/);
+  await host.page.waitForFunction(()=>document.querySelector('#send_textarea').readOnly);
+  const linkedChat=host.main.getByRole('region',{name:'联机对话'});
+  assert.equal(await linkedChat.locator('strong').textContent(),fixtureCard);
+  assert.equal(await linkedChat.locator('small').textContent(),originalChat);
+  assert.equal(await linkedChat.getByRole('status').textContent(),'当前已打开');
+  assert.equal(await linkedChat.getByRole('button').count(),0);
   async function join() {
     await guest.main.locator('[data-field="invite"]').fill(code);
     await guest.main.locator('[data-field="password"]').fill(fixturePassword);
@@ -137,6 +179,28 @@ try {
     assert.match(await guest.main.locator('.mm-public-scene').innerText(), /公开简介 <img.*轮流搜查车厢.*灯光忽明忽暗/s);
     assert.equal(await guest.main.locator('.mm-public-scene img').count(), 0);
     assert.ok(!(await guest.main.innerText()).includes(cardSecret));
+    const confirmMap=guest.main.locator('[data-act="map-confirm"]');
+    await guest.main.getByText(/地图已同步|随包脚本可在你的酒馆中运行/).first().waitFor();
+    if(await confirmMap.isVisible()){
+      assert.equal(await guest.main.locator('[data-act="ready"]').isDisabled(),true);
+      assert.equal(await guest.page.evaluate(()=>!!window.__miemieFixtureCardScript),false);
+      assert.match(await guest.main.innerText(),/同步测试脚本|角色正则/);
+      await confirmMap.click();
+      await guest.page.locator('.TH-popup .popup-button-ok:visible').click();
+      await guest.open();
+    }
+    await guest.main.getByText('地图已同步 · 联机对话已打开').waitFor();
+    assert.equal(await guest.main.getByRole('region',{name:'联机对话'}).count(),0);
+    await guest.page.waitForFunction(()=>window.__miemieFixtureCardScript);
+    assert.deepEqual(await guest.page.evaluate(async secret=>{
+      const c=SillyTavern.getContext(),card=c.characters[c.characterId];
+      const {primary,additional}=TavernHelper.getCharWorldbookNames('current');
+      const books=[primary,...additional,TavernHelper.getChatWorldbookName('current')];
+      return {card:card.data.description.includes(secret)&&card.data.creator_notes.length>=56000,
+        books:await Promise.all(books.map(async (book,i)=>(await TavernHelper.getWorldbook(book)).some(x=>x.content==='LOBBY_IMPORTED_WORLD_ENTRY_'+i))),
+        regex:card.data.extensions.regex_scripts.some(x=>x.scriptName==='同步测试正则')&&TavernHelper.isCharacterTavernRegexesEnabled(),
+        locked:document.querySelector('#send_textarea').readOnly};
+    },cardSecret),{card:true,books:[true,true,true],regex:true,locked:true});
   }
   await join();
   await guest.click('leave');
@@ -158,12 +222,39 @@ try {
   await action(host).locator('[data-field="action"]').fill('房主先调查座位');
   await actionClick(host, 'action');
   await host.page.evaluate(chat => SillyTavern.getContext().openCharacterChat(chat), 'Unrelated test chat ' + Date.now());
+  await host.page.waitForFunction(()=>!document.querySelector('#send_textarea').readOnly);
   assert.notEqual(await host.page.evaluate(() => SillyTavern.getContext().getCurrentChatId()), originalChat);
+  async function returnToChat() {
+    await linkedChat.getByRole('status').filter({hasText:'已切离'}).waitFor();
+    assert.equal(await linkedChat.locator('small').textContent(),originalChat);
+    await linkedChat.getByRole('button',{name:'返回联机对话'}).click();
+    await host.main.waitFor({state:'hidden'});
+    assert.deepEqual(await host.page.evaluate(()=>{
+      const c=SillyTavern.getContext();
+      return [c.characters[c.characterId].name,c.getCurrentChatId()];
+    }),[fixtureCard,originalChat]);
+    await host.page.waitForFunction(()=>document.querySelector('#send_textarea').readOnly);
+  }
+  async function openSideCard() {
+    await host.page.evaluate(async name=>{
+      const c=SillyTavern.getContext();
+      const index=c.characters.findIndex(card=>card.name===name);
+      await c.selectCharacterById(index);
+      if(String(SillyTavern.getContext().characterId)!==String(index))throw Error('Failed to switch cards');
+    },sideCard);
+    await host.page.waitForFunction(()=>!document.querySelector('#send_textarea').readOnly);
+  }
+  await host.open();
+  await returnToChat();
+  await openSideCard();
+  await host.open();
+  await returnToChat();
+  await openSideCard();
   await openTool(guest, 'action');
   await action(guest).locator('[data-field="action"]').fill('来宾查看车门');
   await actionClick(guest, 'action');
   await action(host).locator('[data-act="generate"]:disabled').waitFor();
-  assert.match(await action(host).innerText(), /返回开局时绑定的酒馆聊天/);
+  assert.match(await action(host).innerText(), /返回联机房间绑定的酒馆聊天/);
   assert.match(await action(guest).innerText(), /等待房主返回联机聊天/);
   assert.equal(modelRequests.length, 0);
 
@@ -171,26 +262,28 @@ try {
   await host.reload();
   await host.click('restore');
   assert.equal(await host.main.locator('.mm-invite').inputValue(), code);
-  assert.match(await host.main.innerText(), /返回开局时绑定的酒馆聊天/);
+  await linkedChat.getByRole('button',{name:'返回联机对话'}).waitFor();
   await guest.reload();
   assert.equal(await guest.main.locator('[data-field="resumePassword"]').inputValue(), '');
   await guest.main.locator('[data-field="resumePassword"]').fill(fixturePassword);
   await guest.click('resume-guest');
   await guest.main.locator('.mm-seat.mine').filter({hasText:'来宾测试身份'}).waitFor();
+  await guest.main.getByText('地图已同步 · 联机对话已打开').waitFor();
   assert.match(await guest.main.locator('.mm-public-scene').innerText(), /轮流搜查车厢/);
   assert.equal(await guest.page.evaluate(password => JSON.stringify(sessionStorage).includes(password), fixturePassword), false);
-  await host.page.evaluate(async ({chat, fixtureCard, newEngine}) => {
+  await host.page.setViewportSize({width:390,height:844});
+  assert.equal(await linkedChat.evaluate(card=>card.scrollWidth===card.clientWidth),true);
+  await returnToChat();
+  await host.page.setViewportSize({width:1100,height:950});
+  await host.page.evaluate(async newEngine => {
     const st = await import('/script.js');
-    const index = SillyTavern.getContext().characters.findIndex(card => card.name === fixtureCard);
-    await st.selectCharacterById(index);
-    await SillyTavern.getContext().openCharacterChat(chat);
     SillyTavern.getContext().powerUserSettings.experimental_macro_engine = newEngine;
     document.querySelector('#main_api').value = 'openai';
     document.querySelector('#main_api').dispatchEvent(new Event('change', {bubbles: true}));
     st.setOnlineStatus('Valid');
     const oai = await import('/scripts/openai.js');
     Object.assign(oai.oai_settings, {chat_completion_source: 'custom', custom_url: 'http://127.0.0.1:18795/v1', custom_model: 'fixture', stream_openai: false});
-  }, {chat: originalChat, fixtureCard, newEngine});
+  }, newEngine);
 
   await openTool(host, 'action');
   await actionClick(host, 'generate');
@@ -200,16 +293,25 @@ try {
   assert.equal(await playerStatus.textContent(), '<status>来宾专属</status>');
   assert.equal(modelRequests.length, 1);
   assert.match(JSON.stringify(modelRequests[0]), new RegExp(cardSecret));
+  assert.match(JSON.stringify(modelRequests[0]), /房主先调查座位.*来宾查看车门/s);
+  await guest.page.waitForFunction(()=>SillyTavern.getContext().chat.some(message=>message.extra?.miemie_lobby_result));
+  await host.page.waitForFunction(()=>SillyTavern.getContext().chat.some(message=>message.extra?.miemie_lobby_result));
+  const guestNative=await guest.page.evaluate(()=>SillyTavern.getContext().chat.filter(message=>
+    message.extra?.miemie_lobby_result||message.extra?.miemie_lobby_action).map(message=>message.mes));
+  assert.match(guestNative.join('\n'),/来宾查看车门.*共同剧情测试。.*来宾专属/s);
+  assert.doesNotMatch(guestNative.join('\n'),/房主先调查座位|房主专属/);
   await action(guest).locator('[data-tool-back]').click();
   await guest.click('leave');
+  await action(host).locator('[data-tool-back]').click();
+  await host.open();
   await host.main.locator('.mm-seat').nth(1).getByText('离线 · 角色保留').waitFor();
   assert.equal(await guest.main.locator('[data-act="resume-guest"]').count(), 0);
-  await action(host).locator('[data-tool-back]').click();
   await host.click('end');
   await host.main.locator('.mm-entry-tabs').waitFor();
+  await host.page.waitForFunction(()=>!document.querySelector('#send_textarea').readOnly);
   assert.equal(await host.main.locator('[data-act="restore"]').count(), 0);
   assert.deepEqual(errors, []);
-  console.log('PASS two disposable SillyTavern instances: host-only card and model, authenticated scene sync, leave/rejoin, wrong-chat pause, refresh/restore, own status, explicit room end');
+  console.log('PASS two SillyTavern instances: map transfer, chat guard, shortcut across chats and cards, refresh and rejoin, preserved actions, host-only generation, private transcript');
 } finally {
   await browser?.close();
   signalServer?.close();

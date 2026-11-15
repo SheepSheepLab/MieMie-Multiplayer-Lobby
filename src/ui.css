@@ -110,6 +110,30 @@
 .mm-lobby .mm-public-scene p{margin:0;color:#d5e1e6}
 .mm-lobby .mm-session-pause{color:#edcf95}
 
+.mm-lobby .mm-linked-chat{
+ display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:13px;margin:12px 0;padding:13px 14px;
+ border:1px solid #6c6448;background:linear-gradient(115deg,#182e38,#0b1823 70%);
+}
+.mm-lobby .mm-linked-chat.away{border-color:#9d8251;background:linear-gradient(115deg,#263536,#0c1c28 72%)}
+.mm-lobby .mm-linked-chat-icon{
+ display:grid;place-items:center;width:36px;height:36px;margin:2px 4px;color:#d4b878;
+}
+.mm-lobby .mm-linked-chat-icon::before,.mm-lobby .mm-linked-chat-icon svg{grid-area:1/1}
+.mm-lobby .mm-linked-chat-icon::before{
+ content:'';width:100%;height:100%;border:1px solid #997f4e;background:#122a36;transform:rotate(45deg);
+}
+.mm-lobby .mm-linked-chat-icon svg{width:21px;height:21px;position:relative}
+.mm-lobby .mm-linked-chat-copy>span,.mm-lobby .mm-linked-chat-copy>strong,.mm-lobby .mm-linked-chat-copy>small{display:block}
+.mm-lobby .mm-linked-chat-copy>strong{font-size:14px;font-weight:600;color:#f1e5cb;overflow-wrap:anywhere}
+.mm-lobby .mm-linked-chat-copy>small{font-size:11px;color:#9fb4be;overflow-wrap:anywhere}
+.mm-lobby .mm-linked-chat-status,.mm-lobby .mm-linked-chat-hint{font-size:11px;color:#86beb4;margin-top:3px}
+.mm-lobby .mm-linked-chat.away .mm-linked-chat-status,.mm-lobby .mm-linked-chat-hint{color:#d9bd85}
+.mm-lobby button.mm-linked-chat-return{min-height:44px;font-size:12px;letter-spacing:.5px;white-space:nowrap}
+@media(max-width:440px){
+ .mm-lobby .mm-linked-chat{grid-template-columns:auto minmax(0,1fr)}
+ .mm-lobby .mm-linked-chat-return,.mm-lobby .mm-linked-chat-hint{grid-column:2;justify-self:start}
+}
+
 .mm-lobby .mm-join-fields{grid-template-columns:repeat(2,minmax(0,1fr));align-items:end}
 .mm-lobby .mm-join-fields label{min-width:0;margin:0}
 .mm-lobby .mm-join-fields input{display:block;width:100%;min-width:0}
@@ -120,3 +144,5 @@
 .mm-lobby .mm-takeover h3{margin:0;font-size:14px}
 .mm-lobby .mm-takeover p{margin:5px 0 9px}
 .mm-lobby .mm-takeover button{margin:0 6px 6px 0}
+
+.mm-lobby-send-note{margin:0;padding:4px 12px;font-size:12px;line-height:1.5;color:#ead7ad;background:#101e2b;border-top:1px solid #93805a70;text-align:center}

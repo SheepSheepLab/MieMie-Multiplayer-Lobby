@@ -4,6 +4,31 @@ const state={binding:'0:bound',baseHistory:[],results:[],frozen:{players:[{id:'a
 test('每次生成展开多人身份，来宾宏只作为字面文本，结束后移除钩子',async()=>{const m=mock();await m.adapter.generate(state);const {data,config}=m.get();assert.match(data.messages[0].content,/A（user0）、B（user1）/);assert.match(data.messages[0].content,/<user1>/);assert.match(data.messages[1].content,/原样\{\{setvar::attack::1\}\}和<user>/);assert.equal(config.should_stream,false);assert.equal(m.hooks.length,0);assert.equal(m.events.listenerCount('final'),0);});
 test('生成失败也清理钩子',async()=>{const m=mock(true);await assert.rejects(()=>m.adapter.generate(state),/provider failure/);assert.equal(m.hooks.length,0);assert.equal(m.events.listenerCount('final'),0);});
 
+test('原对话缺失或房间已结束时，快捷返回不切换角色或创建聊天', async () => {
+  const context = {
+    characterId: 0,
+    characters: [{name:'正在浏览',avatar:'other.png'},{name:'联机角色',avatar:'linked.png'}],
+    getCurrentChatId: () => 'unrelated',
+    getRequestHeaders: () => ({}),
+    selectCharacterById: () => assert.fail('Must not switch cards'),
+    openCharacterChat: () => assert.fail('Must not open a chat'),
+  };
+  let chatList = [];
+  const adapter = createAdapter({
+    SillyTavern: {getContext: () => context},
+    async fetch(path, options) {
+      assert.equal(path, '/api/characters/chats');
+      assert.deepEqual(JSON.parse(options.body), {avatar_url:'linked.png',simple:true});
+      return {ok:true,json:async () => chatList};
+    },
+  });
+  const target = {binding:'0:联机 12:30',chatRef:{avatar:'linked.png',chatId:'联机 12:30'}};
+  assert.deepEqual(adapter.describeChat(target), {character:'联机角色',name:'联机 12:30',canReturn:true});
+  await assert.rejects(adapter.openLinkedChat(target, () => true), /改名或删除/);
+  chatList = [{file_name:'联机 12:30.jsonl'}];
+  assert.equal(await adapter.openLinkedChat(target, () => false), false);
+});
+
 function legacyAdapter(generate) {
   const overrides = new Map();
   const events = new EventEmitter();

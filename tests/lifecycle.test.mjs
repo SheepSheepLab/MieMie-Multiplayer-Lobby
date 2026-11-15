@@ -5,7 +5,7 @@ import {Controller} from '../src/controller.mjs';
 import {openPeer,identity} from '../src/transport.mjs';
 const deferred=()=>{let resolve,reject;const promise=new Promise((a,b)=>{resolve=a;reject=b;});return {promise,resolve,reject};};
 const storage=()=>{const map=new Map();return {getItem:k=>map.get(k)||null,setItem:(k,v)=>map.set(k,v)};};
-const adapter={cancel(){}};
+const adapter={cancel(){},hostChat:()=>({binding:'0:bound'})};
 class FakePeer extends EventEmitter {destroy(){this.destroyed=true;} }
 test('closing during host allocation destroys late peer without reviving room or writing storage',async()=>{
  const pending=deferred(),entered=deferred(),saved=storage(),key=await identity();
@@ -31,6 +31,7 @@ test('switching away during generation cancels and ignores a late reply; the ori
  const key=await identity();
  const c=new Controller(storage(),{
   capture:()=>({binding:'0:bound',history:[]}),
+  hostChat:adapter.hostChat,
   matchesChat:()=>correctChat,
   cancel:()=>{stopped++;},
   generate:()=>++generated===1?first.promise:next.promise,
@@ -49,7 +50,7 @@ test('switching away during generation cancels and ignores a late reply; the ori
  assert.equal(c.view.hostChatPaused,true);
  assert.equal(c.view.phase,'error');
  assert.equal(c.view.actions.length,2);
- await assert.rejects(c.generate(),/返回开局/);
+ await assert.rejects(c.generate(),/返回联机房间/);
  correctChat=true;
  c.refreshHostChat();
  const retry=c.generate();

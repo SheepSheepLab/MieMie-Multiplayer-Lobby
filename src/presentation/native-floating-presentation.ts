@@ -55,28 +55,22 @@ export function createNativeFloatingPresentation(host: Window, orb: HTMLButtonEl
   }
   function prepareHeader(panel: HTMLElement, target: HTMLImageElement) {
     const r = panel.getBoundingClientRect(), size = Math.min(148, r.width - 24, r.height - 24);
-    if (size <= 0) return null;
+    const frame = panel.querySelector<HTMLElement>('.mm-frame');
+    if (size <= 0 || !frame) return null;
     const theme = host.getComputedStyle(orb), overlay = doc.createElement('div'), veil = doc.createElement('div'), face = doc.createElement('img');
     overlay.dataset.multiplayerLobbySurfaceSplash = ''; overlay.setAttribute('aria-hidden','true'); overlay.inert = true;
     Object.assign(overlay.style, { position:'absolute', inset:'0', zIndex:'2147483647', pointerEvents:'none', borderRadius:'inherit' });
     veil.dataset.multiplayerLobbySurfaceVeil = '';
     const blur = theme.getPropertyValue('--mm-native-blur-hero').trim() || '14px';
-    // WebKit can paint the tint while skipping backdrop-filter during the window flight.
-    // Apply the same blur to the frame there, keeping the tint and icon on their own layer.
-    const ua = host.navigator.userAgent;
-    const webkit = ua.includes('AppleWebKit/') && (!/(?:Chrome|Chromium)\//.test(ua) || /iPhone|iPad|iPod/.test(ua));
-    const frame = webkit ? panel.querySelector<HTMLElement>('.mm-frame') : null;
-    const previousFilter = frame?.style.filter ?? '';
+    // The flying panel's opacity and clip path create a backdrop boundary.
+    // Filter the panel content directly and keep the tint and icon sharp.
+    const previousFilter = frame.style.filter;
     const blurred = `blur(${blur})`;
     Object.assign(veil.style, {
       position:'absolute', inset:'0', borderRadius:'inherit',
       background:theme.getPropertyValue('--mm-native-hero-backdrop').trim() || '#05213ab8',
     });
-    if (frame) frame.style.filter = blurred;
-    else {
-      veil.style.backdropFilter = blurred;
-      veil.style.setProperty('-webkit-backdrop-filter', blurred);
-    }
+    frame.style.filter = blurred;
     face.src = target.currentSrc || target.src; face.alt = ''; face.draggable = false; face.dataset.multiplayerLobbyHeaderHero = '';
     Object.assign(face.style, { position:'absolute', left:`${(r.width-size)/2+panel.scrollLeft}px`, top:`${(r.height-size)/2+panel.scrollTop}px`, width:`${size}px`, height:`${size}px`, maxWidth:'none', borderRadius:'50%', transformOrigin:'center', objectFit:'contain', willChange:'transform' });
     overlay.append(veil, face); panel.append(overlay);
@@ -86,7 +80,7 @@ export function createNativeFloatingPresentation(host: Window, orb: HTMLButtonEl
       if (cleaned) return;
       cleaned = true;
       overlay.remove();
-      if (frame) frame.style.filter = previousFilter;
+      frame.style.filter = previousFilter;
       target.style.visibility = visibility;
       cleanups.delete(cleanup);
     };
@@ -100,7 +94,7 @@ export function createNativeFloatingPresentation(host: Window, orb: HTMLButtonEl
       try { await Promise.all([
         animate(face,[{transform:'none',clipPath:'circle(49%)'},{transform:'none',clipPath:'circle(49%)',offset:.16},{transform:destination,clipPath:'circle(71%)'}],options),
         animate(veil,[{opacity:1},{opacity:1,offset:.16},{opacity:0}],{...options,easing:'ease-in-out'}),
-        ...(frame ? [animate(frame,[{filter:blurred},{filter:blurred,offset:.16},{filter:previousFilter || 'blur(0px)'}],options)] : []),
+        animate(frame,[{filter:blurred},{filter:blurred,offset:.16},{filter:previousFilter || 'blur(0px)'}],options),
       ]); } finally { cleanup(); }
     } };
   }

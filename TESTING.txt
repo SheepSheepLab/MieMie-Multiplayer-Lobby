@@ -78,3 +78,15 @@ SillyTavern 1.14.0、1.15.0、1.16.0、1.17.0、1.18.0、1.19.0 均使用酒馆�
 Android 模拟器上的 TauriTavern 2.4.0 原生 WebView 导入成品，使用同一 WebView 中独立的来宾连接验证密码、双人行动、实际模型请求构造与各自状态栏。回复在聊天补全请求边界固定。直接调用 TT 原生生成接口时，本机假模型未收到请求，基线调用也超时。原生模型服务、iOS、macOS 和跨公网仍待验收。
 macOS Safari 的本地验收仅确认酒馆助手载入成品、打开大厅并显示 0.6.2。真实外部模型长回合、跨运营商及复杂 NAT／TURN 环境仍待验收。
 先运行 npm ci、npm test 和 npm run build。逐版复测运行 node tests/tavern-compatibility.mjs，使用临时副本，默认连接 18914 至 18919。可传入“地址,版本,引擎”，引擎使用 new 或 legacy。运行 node tests/tavern-room-resume.mjs 时可设置 MIEMIE_MACRO_ENGINE=legacy 或 MIEMIE_NO_POPOVER=1。席位并发用例为 node tests/seat-ui.mjs，可设置 MIEMIE_UI_BROWSER=webkit。
+
+0.7.0 完整地图包与原生对话同步 · 2026-11-15
+37 项 Node 测试通过。补测地图校验拒绝篡改、连接未打开时回收计时器、信令找不到房主和 WebRTC 协商失败的提示。
+Edge 与 WebKit 验证身份新增、切换、改名后自动更新，打开下拉菜单时读取静默更改，建房入口随当前聊天可用性更新，开屏内容模糊且图标保持清晰。
+隔离 SillyTavern 1.14.0 房主和 1.18.0 来宾通过 Edge、本机信令和真实 WebRTC 验证多分片地图下载、完整角色卡、三种关联世界书、角色正则和随卡脚本。来宾首次启用随包脚本后才能准备，随卡测试脚本确实运行。验证自动打开来宾房间对话、不同聊天仍可输入、锁定的行动经房主一次生成、两端写入各自可见的剧情及状态栏、刷新恢复与退房解锁。模型使用固定回复。
+本机四客户端通过公共 PeerJS 信令测试，选中本机直连。用户的 Windows 台式机、跨公网及复杂 NAT／TURN 环境仍待现场复测。运行态与管理包按各自流程回归。新地图流程尚无 TT 原生测试记录。
+复测使用 tests/tavern-room-resume.mjs，MIEMIE_LOBBY_BROWSER=edge 可切换 Edge。tests/ui-regression.mjs 支持 MIEMIE_UI_BROWSER=edge 或 webkit。
+
+0.7.1 房主联机对话快捷返回 · 2026-11-15
+38 项 Node 测试通过，含对话已删除或房间已结束时拦截误跳转。
+使用 Edge 和本机 WebRTC，在隔离 SillyTavern 1.14.0 房主与 1.18.0 来宾之间验证切到同角色的另一对话、切到另一张角色卡、刷新恢复后三种返回。另用 1.19.0 房主与 1.18.0 来宾测试新宏引擎和刷新续玩。确认快捷按钮打开原对话并收起主大厅，恢复联机输入保护，两人之前提交的行动均进入房主的同一次请求。模型使用固定回复。
+检查桌面和 390×844 窄屏的联机对话卡片。WebKit 大厅界面与 Hub Runtime 回归通过，Hub Managed Package 单独通过。备用账号的 Safari 验证载入 0.7.1。快捷返回未在 TT 原生 WebView 验证。

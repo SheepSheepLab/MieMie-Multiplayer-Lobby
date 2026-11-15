@@ -5,7 +5,9 @@ export function text(value, max, label) {
   return value.trim();
 }
 export function persona(value) {
-  return { name: text(value?.name, 80, '角色名'), description: text(value?.description, 16000, '角色描述') };
+  const description = value?.description ?? '';
+  if (typeof description !== 'string' || description.length > 16000) throw Error('角色描述无效或过长');
+  return { name: text(value?.name, 80, '角色名'), description: description.trim() };
 }
 export const sceneFields = [
   ['intro', '场景简介', 900],
@@ -156,7 +158,7 @@ export class Room {
     const visibleActions=actions=>structuredClone(actions.map(a=>s.actionVisibility==='hidden'&&a.playerId!==id?{id:a.id,round:a.round,playerId:a.playerId,seat:a.seat,name:a.name,submitted:true}:a));
     return {lockedSeats:[...(s.lockedSeats||[false,false,false,false])],capacity:(s.lockedSeats||[false,false,false,false]).filter(x=>!x).length,actionVisibility:s.actionVisibility||'public',id:s.id,title:s.title,revision:s.revision,phase:s.phase,round:s.round,error:s.error,chatEpoch:s.chatEpoch,
       players:s.players.map(p=>p?{id:p.id,seat:p.seat,name:p.name,description:p.description,online:p.online,ready:p.ready}:null),
-      scene:publicScene(s.scene),actions:visibleActions(s.actions),chat:structuredClone(s.chat),members:[...s.members],
+      scene:publicScene(s.scene),map:s.mapDescriptor,actions:visibleActions(s.actions),chat:structuredClone(s.chat),members:[...s.members],
       results:s.results.map(r=>({id:r.id,round:r.round,story:r.story,actions:visibleActions(r.actions),
         status:r.players.find(p=>p.playerId===id)?.status||'',message:r.players.find(p=>p.playerId===id)?.message||r.story}))};
   }
