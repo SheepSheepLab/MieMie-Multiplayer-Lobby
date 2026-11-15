@@ -25,7 +25,7 @@ export function listen(peer,key,callbacks){const pending=new Set();peer.on('conn
 export async function connect(peer,invite,callbacks){
  const info=parseInvite(invite),nonce=secret();
  return new Promise((resolve,reject)=>{
-  const conn=peer.connect(info.peerId,{reliable:true,serialization:'json'});
+  const conn=peer.connect(info.peerId,{reliable:true,serialization:'binary'});
   if(!conn)throw Error('信令连接已断开，请重新连接');
   const ice=trackIce(conn,peer);
   let verified=false,finished=false,last=Date.now();

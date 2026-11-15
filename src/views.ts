@@ -3,6 +3,9 @@ import {sceneFields} from './room.mjs';
 export const escape=(s:unknown)=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 export const button=(action:string,label:string,disabled=false,kind='')=>`<button type="button" data-act="${action}" class="${kind}" ${disabled?'disabled':''}>${label}</button>`;
 export const phaseName={lobby:'队伍集结','host-action':'房主行动',actions:'队友行动',ready:'准备生成',generating:'剧情生成中',error:'等待重试',ended:'已结束'};
+export function mapProgressLabel(sync:any){
+ return sync?.parts.length?'正在下载地图 · '+Math.floor(sync.parts.length/sync.total*100)+'%':'正在等待房主发送地图…';
+}
 export function createViews(drafts:any){
  const input=(name:string,placeholder:string,area=false)=>area?`<textarea data-field="${name}" aria-label="${placeholder}" placeholder="${placeholder}">${escape(drafts[name])}</textarea>`:`<input data-field="${name}" aria-label="${placeholder}" value="${escape(drafts[name])}" placeholder="${placeholder}" ${['password','resumePassword'].includes(name)?'type="password" autocomplete="off" maxlength="64"':''}>`;
  function entry(c:any,busy:boolean,entryTab:string,canHost:boolean){
@@ -63,22 +66,23 @@ export function createViews(drafts:any){
   if(c.mode==='host')return c.view.map&&!c.view.mapsReady?'<p class="mm-session-pause" role="status">等待队友同步地图资源。</p>':'';
   if(!c.view.map)return '';
   if(sync?.state==='ready')return '<p class="mm-fine-print">地图已同步 · 联机对话已打开</p>';
-  if(sync?.state==='enable-assets')return '<div class="mm-session-pause" role="status">联机对话已打开。请在酒馆的提示中启用随包脚本和角色正则。'+button('map-check','检查启用状态',false,'mm-text-button')+'</div>';
+  if(sync?.state==='enable-assets')return '<div class="mm-session-pause" role="status">联机对话已打开。请在酒馆启用随包脚本与正则。'+button('map-check','检查启用状态',false,'mm-text-button')+'</div>';
   if(sync?.state==='error')return '<div class="mm-session-pause" role="status">'+escape(sync.error)+button('map-retry','重新同步地图',false,'mm-text-button')+'</div>';
   if(sync?.state==='confirm'){
    const assets=sync.assets, scripts=assets.scripts.slice(0,8);
    return '<div class="mm-session-pause"><p>已收到「'+escape(sync.map.card.data.name)+'」的角色卡及 '+sync.map.books.length+' 本世界书。随包脚本可在你的酒馆中运行。</p>'+
     (scripts.length?'<p>'+scripts.map(escape).join('、')+(assets.scripts.length>scripts.length?' 等 '+assets.scripts.length+' 个脚本':'')+'</p>':'')+
-    (assets.regexCount?'<p>'+assets.regexCount+' 条角色正则</p>':'')+button('map-confirm','确认并打开联机对话',false,'primary')+'</div>';
+    (assets.regexCount?'<p>'+assets.regexCount+' 条角色正则</p>':'')+
+    (assets.preset?'<p>预设「'+escape(assets.preset)+'」'+(assets.presetRegexes?' · '+assets.presetRegexes+' 条预设正则':'')+'</p>':'')+
+    button('map-confirm','确认并打开联机对话',false,'primary')+'</div>';
   }
-  const label=sync?.state==='verifying'?'正在校验地图资源…':sync?.state==='installing'?'正在将地图导入酒馆…':
-   sync?.state==='downloading'&&sync.parts.length?'正在下载地图 · '+Math.floor(sync.parts.length/sync.total*100)+'%':'正在等待房主发送地图…';
-  return '<p class="mm-session-pause" role="status">'+label+'</p>';
+  const label=['checking','verifying'].includes(sync?.state)?'正在校验地图资源…':sync?.state==='installing'?'正在将地图导入酒馆…':mapProgressLabel(sync);
+  return '<p class="mm-session-pause" role="status"><span data-map-progress>'+label+'</span></p>';
  }
  function linkedChat(c:any,busy:boolean){
   const chat=c.linkedHostChat();
   if(!chat)return '';
-  const away=c.view.hostChatPaused;
+  const away=c.mode==='host'?c.view.hostChatPaused:!c.adapter.matchesChat(c.chatBinding());
   return `<section class="mm-linked-chat${away?' away':''}" aria-label="联机对话">
    <div class="mm-linked-chat-icon">${toolIcon('chat')}</div>
    <div class="mm-linked-chat-copy"><span class="mm-eyebrow">联机对话</span>
@@ -90,9 +94,11 @@ export function createViews(drafts:any){
  }
  function lobby(c:any,busy:boolean,inHub:boolean){const v=c.view,isHost=c.mode==='host',me=v.players.find(p=>p?.id===c.myId),players=v.players.filter(Boolean),ready=players.filter(p=>p.ready&&p.online).length;return `
  <div class="mm-roomhead"><div><span class="mm-eyebrow">${v.actionVisibility==='hidden'?'暗行动 · 隐秘博弈':'公开行动 · 协同冒险'}</span><h1>${escape(v.title)}</h1></div><span class="mm-live ${c.connected?'':'offline'}">${c.connected?'● 已连接':'○ 重连中'}</span></div>
- ${isHost?linkedChat(c,busy):v.hostChatPaused?'<p class="mm-session-pause" role="status">房主暂时切换了聊天，房间和已提交的行动保留。</p>':''}
+ ${linkedChat(c,busy)}
+ ${!isHost&&v.hostChatPaused?'<p class="mm-session-pause" role="status">房主暂时切换了聊天，房间和已提交的行动保留。</p>':''}
  ${sceneFields.some(([key])=>v.scene?.[key])?`<details data-detail="public-scene" class="mm-public-scene" open><summary>公开场景资料</summary>${sceneFields.map(([key,label])=>v.scene?.[key]?`<section><h3>${label}</h3><p>${escape(v.scene[key])}</p></section>`:'').join('')}</details>`:''}
  ${roomMap(c)}
+ ${scriptSync(c)}
  ${c.transcriptError?'<p class="mm-session-pause" role="status">联机对话写入失败。'+button('transcript-retry','重试写入',false,'mm-text-button')+'</p>':''}
  <div class="mm-room-meta"><span>${phaseName[v.phase]} · 第 ${v.round} 回合</span><span>${players.length} / ${v.capacity||4} 席</span></div>
  <div class="mm-seats">${seats(c,busy)}</div>
@@ -101,15 +107,65 @@ export function createViews(drafts:any){
  <div class="mm-tool-shortcuts">${button('open:action',`${toolIcon('action')}<span><strong>回合行动</strong><small>提交行动 · 剧情与个人状态</small></span>`)}${button('open:chat',`${toolIcon('chat')}<span><strong>队伍聊天室</strong><small>独立交流 · 未读提醒</small></span>`)}</div>
  ${isHost?c.pending.map((p,i)=>`<div class="mm-message">有人申请接管 user${p.seat}${button('approve:'+i,'批准接管')}</div>`).join(''):''}
  <div class="mm-room-exit">${isHost?button('end','结束联机',false,'mm-text-button'):button('leave','离开房间',busy,'mm-text-button')}${!isHost&&!c.connected?button('reconnect','立即重连'):''}<span>${v.phase==='lobby'?(isHost?'点击空位锁定或解锁':'点击空位可换位，换位后请重新准备'):'角色与剧情由房主同步'}</span></div>`;}
- function action(c:any,busy:boolean,turn:any){const v=c.view,isHost=c.mode==='host',me=v.players.find(p=>p?.id===c.myId),last=v.results.at(-1),appendDisabled=isHost&&v.hostChatPaused;return `
- <div class="mm-scroll" data-scroll="action"><div class="mm-turn-banner ${turn.attention?'active':''}"><span class="mm-eyebrow">ROUND ${String(v.round).padStart(2,'0')}</span><h2>${turn.label}</h2><p>${v.actionVisibility==='hidden'?'暗行动 · 其他玩家仅看见你已提交':'公开行动 · 队友会看见本轮行动'}</p></div>
+ function scriptSync(c:any){
+  const {scripts=[],processors=[]}=c.view;
+  if(!scripts.length&&!processors.length)return '';
+  const states={idle:'本回合未开始',waiting:'等待前序脚本',running:'进行中',done:'本回合结束',failed:'处理失败'};
+  const scopes={character:'角色卡',preset:'预设',global:'全局'};
+  return `<details class="mm-history mm-script-sync" data-detail="scripts"><summary>脚本同步 <small>${scripts.length} 个已启用</small></summary>
+   ${scripts.map(s=>`<p><strong>${escape(s.name)}</strong><small>${scopes[s.scope]} · ${s.scope==='global'?'各端本地运行':c.mode==='host'?(c.view.mapsReady?'已同步':'等待同步'):(c.mapSync?.state==='ready'?'已同步':'同步中')}</small></p>`).join('')}
+   ${processors.length?'<h3>同步前需等待</h3>':''}${processors.map(p=>`<p><strong>${escape(p.name)}</strong><small>${!p.enabled?'本房间已停用':!p.available?'脚本自动处理未启用':states[p.state]}</small>${c.mode==='host'?button('processor:'+p.id,p.enabled?'停用':'启用',c.view.phase==='generating','mm-text-button'):''}</p>`).join('')}
+  </details>`;
+ }
+ function action(c:any,busy:boolean,turn:any){
+  const v=c.view,isHost=c.mode==='host',players=v.players.filter(Boolean);
+  const hidden=v.actionVisibility==='hidden',appendDisabled=isHost&&v.hostChatPaused;
+  const actions=new Map<string,any>(v.actions.map(a=>[a.playerId,a]));
+  const floors=new Map<string,number>((v.branchFloors??[]).map(target=>[target.id,target.floor]));
+  const canPropose=c.connected&&v.phase==='host-action'&&!v.vote&&!v.operation&&!v.branchPending&&!v.hostChatPaused
+   &&v.mapsReady!==false&&players.filter(p=>p.online).length>=2;
+  const latest=v.results.at(-1),vote=v.vote;
+  const canVote=!!vote&&vote.voters.includes(c.myId)&&!vote.yes.includes(c.myId);
+  return `
+ <div class="mm-scroll mm-action-feed" data-scroll="action">
+ <div class="mm-turn-banner ${turn.attention?'active':''}">
+  <div><h2>第 ${v.round} 回合</h2><span class="mm-turn-phase">${turn.label}</span></div>
+  <span class="mm-turn-mode">${hidden?'暗行动':'公开行动'}</span>
+ </div>
  ${v.hostChatPaused?`<p class="mm-session-pause" role="status">${isHost?'请返回联机房间绑定的酒馆聊天。':'等待房主返回联机聊天。'}</p>`:''}
- <div class="mm-round-roster">${v.players.filter(Boolean).map(p=>`<span class="${v.actions.some(a=>a.playerId===p.id)?'done':''}" title="${escape(p.name)}">${escape(p.name)}<i>${v.actions.some(a=>a.playerId===p.id)?'✓':p.online?'·':'○'}</i></span>`).join('')}</div>
- ${last?`<article class="mm-story"><span class="mm-eyebrow">上一回合 · ${last.round}</span><p>${escape(last.story)}</p><details data-detail="status" open><summary>我的状态 · user${me?.seat}</summary><pre>${escape(last.status)}</pre></details>${v.map?'':button('append:'+(v.results.length-1),'写入当前酒馆聊天',appendDisabled,'mm-text-button')}</article>`:`<div class="mm-empty-scene"><div class="mm-orbit-art" aria-hidden="true">✧</div><h3>${v.phase==='lobby'?'队伍即将启程':'你的选择，让故事发生'}</h3><p>${v.phase==='lobby'?'在大厅准备就绪，等待房主开始。':escape(v.scene?.opening||'本轮剧情将在行动收齐后生成。')}</p></div>`}
- ${v.results.length>1?`<details data-detail="history" class="mm-history"><summary>更早的剧情 · ${v.results.length-1} 回合</summary>${v.results.slice(0,-1).map((r,i)=>`<article class="mm-story"><small>ROUND ${r.round}</small><p>${escape(r.story)}</p><pre>${escape(r.status)}</pre>${v.map?'':button('append:'+i,'写入当前聊天',appendDisabled,'mm-text-button')}</article>`).join('')}</details>`:''}
- ${v.actions.length?`<details data-detail="submitted" class="mm-submitted"><summary>本轮已提交 · ${v.actions.length} / ${v.players.filter(Boolean).length}</summary>${v.actions.map(a=>`<div class="mm-message"><small>${escape(a.name)} · 已锁定</small><p>${a.submitted?'秘密行动已提交':escape(a.content)}</p></div>`).join('')}</details>`:''}
- ${isHost&&v.phase==='actions'?v.players.filter(p=>p&&p.seat>0&&!p.online&&!v.actions.some(a=>a.playerId===p.id)).map(p=>button('skip:'+p.seat,'跳过离线角色 '+escape(p.name))).join(''):''}</div>
- <div class="mm-composer">${['host-action','actions'].includes(v.phase)?`<label>你的本轮行动 <span>${turn.canAct?'等待你提交':'可先写下草稿'}</span></label>${input('action','你准备采取什么行动？',true)}${button('action',turn.canAct?(v.actionVisibility==='hidden'?'锁定并秘密提交':'锁定并提交行动'):'等待 · 暂不可提交',!turn.canAct||busy,'primary mm-wide')}`:isHost&&['ready','error'].includes(v.phase)?button('generate',v.hostChatPaused?'返回联机聊天后生成':v.phase==='error'?'重试这一轮':'生成共同剧情',busy||!c.connected||v.hostChatPaused,'primary mm-wide'):v.phase==='generating'?`<div class="mm-generating"><i></i> 房主正在生成共同剧情</div>${isHost?button('cancel','取消生成',false,'mm-wide'):''}`:`<p class="mm-hint">${turn.label}</p>`}</div>`;}
+ ${vote?`<section class="mm-vote" aria-label="队伍投票">
+  <h3>${vote.kind==='reroll'?'重 Roll 上轮剧情':'创建剧情分支'}</h3>
+  <p>第 ${vote.round} 回合 · ${vote.yes.length} / ${vote.voters.length} 赞成 · 在线玩家一致通过</p>
+  ${canVote?'<div class="mm-row">'+button('vote:yes','赞成',false,'primary')+button('vote:no','反对')+'</div>':''}
+ </section>`:''}
+ ${(v.processors??[]).some(p=>['waiting','running','done'].includes(p.state))?scriptSync(c):''}
+ <section class="mm-current-actions" aria-label="本轮行动">
+  <div class="mm-action-section-title"><h3>本轮行动</h3><span>${actions.size} / ${players.length} 已提交</span></div>
+  ${players.map(p=>{
+   const entry=actions.get(p.id);
+   const status=entry?(entry.skip?'已跳过':'已提交'):!p.online?'离线':v.phase==='lobby'?'待开局':'待行动';
+   const skip=isHost&&v.phase==='actions'&&p.seat>0&&!p.online&&!entry;
+   return `<article class="mm-player-action ${entry?'submitted':''}" data-action-seat="${p.seat}">
+    <span class="mm-action-seal" aria-hidden="true"><span>${escape(p.name.slice(0,1))}</span></span>
+    <div class="mm-player-action-body">
+     <div class="mm-player-action-heading"><strong>${escape(p.name)}</strong><small>${p.seat===0?'房主':'席位 '+p.seat}${p.id===c.myId?' · 你':''}</small><span class="mm-action-state">${status}</span></div>
+     ${entry?`<p class="mm-player-action-text ${entry.submitted?'secret':''}">${entry.submitted?'暗行动已锁定':escape(entry.content)}</p>`:''}
+     ${skip?button('skip:'+p.seat,'跳过本轮',false,'mm-text-button'):''}
+    </div>
+   </article>`;
+  }).join('')}
+ </section>
+ ${latest&&floors.has(latest.id)?`<div class="mm-turn-tools">${button('reroll:'+latest.id,'发起重 Roll',!canPropose,'mm-text-button')}</div>`:''}
+ ${!v.results.length&&v.scene?.opening?`<details data-detail="turn-opening" class="mm-history"><summary>公开开场</summary><p>${escape(v.scene.opening)}</p></details>`:''}
+ ${v.results.length?`<details data-detail="history" class="mm-history">
+  <summary><span>往轮记录</span><small>${v.results.length} 回合</small></summary>
+  ${v.results.map((r,i)=>`<article class="mm-story"><small>第 ${r.round} 回合${floors.has(r.id)?' · 酒馆第 '+floors.get(r.id)+' 楼':''}</small>
+   ${r.actions?.map(a=>`<p class="mm-past-action"><strong>${escape(a.name)}</strong> ${a.submitted?'暗行动已锁定':escape(a.content)}</p>`).join('')||''}
+   <p>${escape(r.story)}</p>${r.status?`<small>我的状态</small><pre>${escape(r.status)}</pre>`:''}
+   ${floors.has(r.id)?button('branch:'+r.id,'从此楼发起分支投票',!canPropose,'mm-text-button'):v.map?'':button('append:'+i,'写入当前聊天',appendDisabled,'mm-text-button')}</article>`).reverse().join('')}
+ </details>`:''}
+ </div>
+ <div class="mm-composer">${['host-action','actions'].includes(v.phase)?`<label>你的本轮行动 <span>${turn.canAct?'等待你提交':turn.label}</span></label>${input('action','你准备采取什么行动？',true)}${button('action',turn.canAct?(v.actionVisibility==='hidden'?'锁定并秘密提交':'锁定并提交行动'):'等待 · 暂不可提交',!turn.canAct||busy,'primary mm-wide')}`:isHost&&['ready','error'].includes(v.phase)?button('generate',v.hostChatPaused?'返回联机聊天后生成':v.phase==='error'?'重试这一轮':'生成共同剧情',busy||!c.connected||v.hostChatPaused||v.mapsReady===false,'primary mm-wide'):v.phase==='generating'?`<div class="mm-generating"><i></i> ${v.processors?.some(p=>p.state==='running')?'等待脚本处理后同步':v.operation==='reroll'?'正在重 Roll 上轮剧情':'房主正在生成共同剧情'}</div>${isHost?button('cancel','取消生成',false,'mm-wide'):''}`:`<p class="mm-hint">${turn.label}</p>`}</div>`;}
  function chat(c:any){const v=c.view;return `<div class="mm-channel-meta"><span>队伍频道 · ${v.players.filter(p=>p?.online).length} 人在线</span>${c.mode==='host'?button('clear','清空',false,'mm-text-button'):''}</div><div class="mm-scroll mm-chat-log" data-scroll="chat">${v.chat.map(m=>`<div class="mm-chat-message ${m.playerId===c.myId?'self':''}"><span class="mm-chat-avatar">${escape(m.name.slice(0,1))}</span><div><small>${escape(m.name)} <span>user${m.seat}</span></small><p>${escape(m.content)}</p></div></div>`).join('')||'<div class="mm-empty-scene"><div class="mm-orbit-art">◇</div><h3>队伍频道已就绪</h3><p>一起商量下一步。聊天不会作为 RP 行动提交。</p></div>'}</div><div class="mm-composer">${input('chat','发消息给队伍…',true)}<div class="mm-chat-send"><span>重连自动同步 · 最近 300 条</span>${button('chat','发送',!c.connected,'primary')}</div></div>`;}
  return {entry,lobby,action,chat};
 }

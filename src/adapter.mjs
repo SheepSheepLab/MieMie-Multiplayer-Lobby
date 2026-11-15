@@ -45,9 +45,60 @@ export function createAdapter(host,helper=host.TavernHelper){
   if(typeof helper?.generate!=='function'||!c?.eventTypes?.CHAT_COMPLETION_SETTINGS_READY)throw Error('房主需要支持聊天补全的酒馆及酒馆助手 4.11.3');
   return c;
  };
+ const chatRequest=async (path,body)=>{
+  const response=await host.fetch(path,{method:'POST',headers:context().getRequestHeaders(),body:JSON.stringify(body)});
+  if(!response.ok)throw Error('酒馆聊天接口返回 '+response.status);
+  return response.json();
+ };
  let active=null;
  return {
   ...createTavernMapAdapter(host,context,helper),
+  currentScripts(){
+   const scripts=[];
+   function walk(items,scope){
+    for(const item of items??[]){
+     if(item?.enabled===false)continue;
+     if(Array.isArray(item?.scripts))walk(item.scripts,scope);
+     else if(typeof item?.content==='string'&&scripts.length<60){
+      scripts.push({name:String(item.name||'未命名脚本').slice(0,100),scope});
+     }
+    }
+   }
+   for(const scope of ['character','preset','global']){
+    try{walk(helper?.getScriptTrees?.({type:scope}),scope);}catch{/* This scope is inactive. */}
+   }
+   return scripts;
+  },
+  resultFloors(binding){
+   if(!matchesChat(binding))return [];
+   return Array.from(context().chat).flatMap((message,floor)=>typeof message.extra?.miemie_lobby_result==='string'
+    ?[{id:message.extra.miemie_lobby_result,floor}]:[]);
+  },
+  async branchChat(binding,branch,isCurrent){
+   if(!/^[0-9a-f-]{36}$/i.test(branch.id)||!binding?.chatRef?.avatar)throw Error('联机分支编号或对话无效');
+   const c=context(),avatar=binding.chatRef.avatar;
+   if(!matchesChat(binding))throw Error('请先返回联机对话');
+   const floor=c.chat.findIndex(message=>message.extra?.miemie_lobby_result===branch.resultId);
+   if(floor<0)throw Error('找不到已经写入酒馆的剧情楼层');
+   const chatId='咩咩联机分支 '+branch.id;
+   const ref={avatar_url:avatar,file_name:chatId};
+   const metadata={...c.chatMetadata,main_chat:binding.chatRef.chatId,integrity:crypto.randomUUID(),miemie_lobby_branch:branch.id};
+   const messages=[{user_name:'unused',character_name:'unused',chat_metadata:metadata},...structuredClone(c.chat.slice(0,floor+1))];
+   const prior=await chatRequest('/api/chats/get',ref);
+   if(!isCurrent()||!matchesChat(binding))throw Error('已取消联机分支');
+   if(prior?.length){
+    if(prior[0]?.chat_metadata?.miemie_lobby_branch!==branch.id)throw Error('已有同名对话，请重试发起投票');
+   }else{
+    const saved=await chatRequest('/api/chats/save',{...ref,ch_name:c.name2,chat:messages});
+    if(!saved.ok)throw Error('联机分支没有保存成功');
+   }
+   if(!isCurrent()||!matchesChat(binding))throw Error('联机分支已保存，请返回原对话后重试');
+   await c.openCharacterChat(chatId);
+   const next={...currentChat(context()),...(binding.presetName?{presetName:binding.presetName,presetRegexes:binding.presetRegexes}:{})};
+   if(next.chatRef?.avatar!==avatar||next.chatRef.chatId!==chatId||
+     context().chatMetadata?.miemie_lobby_branch!==branch.id)throw Error('无法打开联机分支');
+   return next;
+  },
   personas(){const c=context(),p=c?.powerUserSettings;return Object.entries(p?.personas||{}).map(([id,name])=>({id,name:String(name),description:p?.persona_descriptions?.[id]?.description||''}));},
   profile(){const c=context();return {name:c?.name1||'',description:c?.powerUserSettings?.persona_description||''};},
   activePersonaId(personas){
@@ -183,8 +234,14 @@ export function createAdapter(host,helper=host.TavernHelper){
     messages.push({role:'user',message:actions.map(action=>action.name+'：'+action.content).join('\n\n'),
      extra:{miemie_lobby_action:result.id}});
    }
-   if(!chat.some(message=>message.extra?.miemie_lobby_result===result.id)){
-    messages.push({role:'assistant',message:result.message,extra:{miemie_lobby_result:result.id}});
+   const index=chat.findIndex(message=>message.extra?.miemie_lobby_result===result.id);
+   const variant=result.variant??0;
+   if(index<0)messages.push({role:'assistant',message:result.message,extra:{miemie_lobby_result:result.id,miemie_lobby_variant:variant}});
+   else if((chat[index].extra?.miemie_lobby_variant??0)<variant){
+    if(!helper.setChatMessages)throw Error('当前酒馆助手不能更新已同步的回复');
+    const old=chat[index];
+    await helper.setChatMessages([{message_id:index,message:result.message,
+     extra:{...old.extra,miemie_lobby_variant:variant}}]);
    }
    if(messages.length)await helper.createChatMessages(messages);
    return true;

@@ -55,3 +55,55 @@ test('first available seat is assigned at join; moving is atomic and keeps the s
  room.start('bound',[]);
  assert.throws(()=>room.move(second,2),/开局后席位固定/);
 });
+
+test('恢复尚未开始的房间只显示现有连接，原队友返回后重新准备',()=>{
+ const room=Room.create(p('主机'),'host','房间');
+ const id=room.join(p('来宾'),'guest');
+ room.ready(id,true);
+ const restored=Room.restore(structuredClone(room.state));
+ assert.equal(restored.seats()[1],null);
+ assert.equal(restored.join(p('临时身份'),'guest'),id);
+ assert.equal(restored.player(id).name,'来宾');
+ assert.equal(restored.player(id).ready,false);
+});
+
+test('重 Roll 或指定楼层分支需在线队友一致同意，撤销保留原剧情',()=>{
+ const room=fixture(3);
+ const [host,guest,third]=room.state.players;
+ const generate=()=>{
+  for(let i=0;i<3;i++)action(room,i);
+  return room.commit(room.beginGeneration(),raw(3));
+ };
+ const first=generate(), second=generate();
+ assert.throws(()=>room.proposeVote(host.id,'reroll',first.id),/楼层/);
+ const denied=room.proposeVote(host.id,'reroll',second.id);
+ assert.throws(()=>action(room,0),/投票/);
+ assert.equal(room.castVote(guest.id,denied.id,true),null);
+ room.castVote(third.id,denied.id,false);
+ assert.equal(room.state.results.at(-1),second);
+ const overtaken=room.proposeVote(host.id,'reroll',second.id,0);
+ assert.throws(()=>room.castVote(guest.id,overtaken.id,true,60000),/失效/);
+ room.expireVote(overtaken.id);
+ const yes=room.proposeVote(host.id,'reroll',second.id);
+ room.castVote(guest.id,yes.id,true);
+ const op=room.castVote(third.id,yes.id,true);
+ const failed=room.beginReroll(op);
+ room.fail(failed,'失败');
+ assert.equal(room.state.results.at(-1),second);
+ const again=room.proposeVote(host.id,'reroll',second.id);
+ room.castVote(guest.id,again.id,true);
+ const attempt=room.beginReroll(room.castVote(third.id,again.id,true));
+ const result=room.commit(attempt,raw(3).replace('共享正文','重写'));
+ assert.equal(result.id,second.id);
+ assert.equal(result.variant,1);
+ assert.equal(room.state.round,3);
+ const branch=room.proposeVote(guest.id,'branch',first.id);
+ room.castVote(host.id,branch.id,true);
+ const branchOp=room.castVote(third.id,branch.id,true);
+ room.commitBranch(branchOp,{binding:'new-chat'});
+ assert.deepEqual(room.state.results,[first]);
+ assert.equal(room.state.round,2);
+ assert.equal(room.state.binding,'new-chat');
+ assert.equal(room.state.branch.resultId,first.id);
+ assert.equal(room.state.players[1].id,guest.id);
+});

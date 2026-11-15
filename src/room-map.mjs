@@ -7,6 +7,9 @@ const sha256 = async bytes => Array.from(new Uint8Array(await crypto.subtle.dige
   byte => byte.toString(16).padStart(2, '0')).join('');
 const keyPattern = /^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i;
 const isRecord = value => value && typeof value === 'object' && !Array.isArray(value);
+const stableJSON = value => JSON.stringify(value, (_key, item) => isRecord(item)
+  ? Object.fromEntries(Object.keys(item).sort().map(key => [key, item[key]])) : item);
+export const resourceHash = value => sha256(encoder.encode(stableJSON(value)));
 
 export function toBase64(bytes) {
   let raw = '';
@@ -24,10 +27,18 @@ export function validateMapDescriptor(map) {
 }
 
 export async function encodeRoomMap(map) {
-  const bytes = encoder.encode(JSON.stringify(map));
+  const bytes = encoder.encode(stableJSON(map));
   if (bytes.length > maxBytes) throw Error('地图包含的资源超过 16 MB，请缩小图片或移除过大的附件');
   const descriptor = {hash: await sha256(bytes), bytes: bytes.length};
   return {descriptor, data: toBase64(bytes)};
+}
+export function describeRoomMap(map) {
+  return {
+    card:map.card.data.name,
+    links:{primary:map.links.primary,additional:[...map.links.additional],chat:map.links.chat},
+    books:map.books.map(book=>book.name),
+    preset:map.preset?.name ?? null,
+  };
 }
 
 export async function decodeRoomMap(descriptor, data) {
@@ -41,11 +52,16 @@ export async function decodeRoomMap(descriptor, data) {
       || typeof map.card.data.name !== 'string' || !map.card.data.name.trim()
       || map.card.data.name.length > 300 || typeof map.avatar !== 'string'
       || !Array.isArray(map.books) || map.books.length > 64
-      || !map.books.every(book => typeof book?.name === 'string' && isRecord(book.data?.entries))
+      || !map.books.every(book => typeof book?.name === 'string' && book.name.trim() && book.name.length<=200
+        && !/[/\\\x00-\x1f]/.test(book.name) && isRecord(book.data?.entries))
       || !map.links || !Array.isArray(map.links.additional)) throw Error('同步的角色卡或世界书格式无效');
   for (const name of [map.links.primary, map.links.chat, ...map.links.additional]) {
     if (name !== null && !map.books.some(book => book.name === name)) throw Error('地图缺少引用的世界书');
   }
+  if (map.preset && (typeof map.preset.name !== 'string' || !map.preset.name.trim()
+      || map.preset.name.length > 200 || /[/\\\x00-\x1f]/.test(map.preset.name)
+      || !isRecord(map.preset.data?.settings) || !Array.isArray(map.preset.data.prompts)
+      || !Array.isArray(map.preset.data.prompts_unused))) throw Error('同步的预设格式无效');
   return map;
 }
 
@@ -68,8 +84,17 @@ export function roomMapAssets(map) {
   const regexes = extensions?.regex_scripts;
   const regexCount = Array.isArray(regexes) ? regexes.length : 0;
   const enableRegexes = regexCount > 0 && regexes.some(regex => !regex?.disabled);
+  const scopedScripts = scripts.length;
+  const enableCharacterScripts = scopedScripts>0&&enableScripts;
+  enableScripts = false;
+  visit(map.preset?.data.extensions?.tavern_helper?.scripts);
+  const presetRules = map.preset?.data.extensions?.regex_scripts;
+  const presetRegexes = Array.isArray(presetRules)?presetRules.length:0;
   const embeddedCode = /<\s*(?:script|iframe|object|embed)\b|\bon\w+\s*=|javascript\s*:/i.test(JSON.stringify(map.card.data));
-  return {scripts,regexCount,enableScripts,enableRegexes,requiresConsent: scripts.length > 0 || regexCount > 0 || embeddedCode};
+  return {scripts,regexCount,enableScripts:enableCharacterScripts,enableRegexes,
+    ...(map.preset?{preset:map.preset.name,presetRegexes,enablePresetScripts:enableScripts,
+      enablePresetRegexes:presetRegexes>0&&presetRules.some(regex=>regex?.enabled!==false&&regex?.disabled!==true)}:{}),
+    requiresConsent: scripts.length > 0 || regexCount > 0 || presetRegexes > 0 || embeddedCode};
 }
 
 export function createRoomMapStore(indexedDB) {

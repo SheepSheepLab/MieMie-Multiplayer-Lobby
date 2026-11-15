@@ -9,10 +9,11 @@ import {createIcon} from './presentation/icons';
 import {MULTIPLAYER_LOBBY_PRODUCT as PRODUCT} from './presentation/product-identity';
 import {createToolWindow} from './tool-window';
 import {createActivityTracker,turnState} from './activity.mjs';
-import {createViews,paint,escape,button} from './views';
+import {createViews,paint,escape,button,mapProgressLabel} from './views';
 import styles from './ui.css';
 import {createOpeningCeremony} from './opening-ceremony';
 import {createChatComposerLock} from './chat-composer-lock';
+import {createLobbyConfirmation} from './confirmation';
 import ICON from '../assets/multiplayer-lobby-icon.png';
 const host=window.parent?.SillyTavern?window.parent:window;
 const key='__miemieMultiplayerLobbyV1';
@@ -49,6 +50,8 @@ function boot(){
  const css=doc.createElement('style');css.textContent=styles;doc.head.append(css);doc.body.append(panel);
  const ceremony=createOpeningCeremony(host,ICON);let previousPhase='',previousRoom='',pendingCeremony=false;
  const composerLock=createChatComposerLock(doc);
+ const confirmation=createLobbyConfirmation(doc);
+ let mapProgressFrame=0;
  const appearance=createLauncherAppearance(host),settings=createLauncherSettings(panel,frame,appearance),tracker=createActivityTracker();
  let disposed=false,composing=false,entryTab='join',busy=0,notice='',controller:any,roomId:string|null=null,tools:Record<string,ReturnType<typeof createToolWindow>>={};
  const drafts={...adapter.profile(),title:'今晚一起冒险',invite:'',chat:'',action:'',network:'',actionVisibility:'public',password:'',joinMode:'short',intro:'',rules:'',opening:'',resumePassword:''};
@@ -81,7 +84,16 @@ function boot(){
   }
  }
  const views=createViews(drafts);
- controller=new Controller(host.localStorage,adapter,()=>render(),undefined,host.sessionStorage);
+ controller=new Controller(host.localStorage,adapter,(_controller,reason)=>{
+  if(reason==='map-progress'){
+   if(!mapProgressFrame)mapProgressFrame=host.requestAnimationFrame(()=>{
+    mapProgressFrame=0;
+    if(controller.mapSync?.state!=='downloading')return;
+    const label=content.querySelector('[data-map-progress]');
+    if(label)label.textContent=mapProgressLabel(controller.mapSync);
+   });
+  }else render();
+ },undefined,host.sessionStorage);
  let embeddedTool: 'action'|'chat'|null=null;
  const stopLayer=observeWindowLayer(host,panel);
  const presentation=startLobbyPresentation({
@@ -112,13 +124,17 @@ function boot(){
   return true;
  }
  function resetLayers(){
-  settings.close();ceremony.close(false);embeddedTool=null;composing=false;
+  settings.close();ceremony.close(false);confirmation.cancel();embeddedTool=null;composing=false;
  }
  function foreground(){if(ceremony.isOpen()||!presentation.canUseTools())return;for(const t of Object.values(tools))t.foreground();}
  function fail(error:any){if(disposed)return;notice=error?.message||String(error);render();}
  function refreshLinkedChat(){
   const binding=controller?.chatBinding();
-  composerLock.sync(!!binding&&controller.view?.phase!=='ended'&&adapter.matchesChat(binding));
+  const inLinkedChat=!!binding&&controller.view?.phase!=='ended'&&adapter.matchesChat(binding);
+  composerLock.sync(inLinkedChat);
+  if(controller?.mode==='guest'){
+   try{adapter.refreshMapPreset(binding,inLinkedChat);}catch(error){console.warn('[咩咩联机大厅]',error);}
+  }
   if(binding)void controller.syncTranscript();
  }
  function canHost(){
@@ -139,6 +155,7 @@ function boot(){
   if (previousRoom && previousRoom !== (v?.id || '')) {ceremony.close();pendingCeremony=false;}
   previousRoom=v?.id||'';previousPhase=v?.phase||'';
   if(roomId!==(v?.id||null)){
+   confirmation.cancel();
    roomId=v?.id||null;embeddedTool=null;composing=false;drafts.action='';drafts.chat='';
    for(const t of Object.values(tools))t.dispose();
    tools={};tracker.update(null,controller.myId);
@@ -187,6 +204,10 @@ function boot(){
  async function handleClick(e:Event){
   const control=(e.target as Element).closest<HTMLElement>('[data-act]');
   const action=control?.dataset.act;if(!action||disposed||!presentation.isActive())return;
+  const room=controller.view?.id;
+  const ask=async (title:string,description:string,confirm:string,danger=false)=>
+   await confirmation.ask({title,description,confirm,danger},control)
+   &&!disposed&&room===controller.view?.id;
   if(action==='preview-opening'){
    control.focus({preventScroll:true});
    ceremony.show();
@@ -194,7 +215,7 @@ function boot(){
   }
   if(action==='settings'){settings.open();return;}
   if(action==='close'){await presentation.back();foreground();return;}
-  const operation=['host','join','restore','resume-guest','generate','leave','return-chat'].includes(action);if(operation&&busy)return;
+  const operation=['host','join','restore','resume-guest','start','generate','leave','return-chat'].includes(action);if(operation&&busy)return;
   const restorePicker = action.startsWith('select-persona:');
   const restoreControl = ['entry:join','entry:create','mode:public','mode:hidden','persona','return-chat'].includes(action);
   if(operation)busy++;notice='';
@@ -217,7 +238,7 @@ function boot(){
    }
    if(action==='persona'){syncPersonas();}
    else if(action==='map-confirm'){
-    if(!panel.hidden)await presentation.back();
+    if(!panel.hidden&&!controller.mapChat)await presentation.back();
     await controller.installRoomMap();
    }
    else if(action==='map-check'){
@@ -250,18 +271,41 @@ function boot(){
    else if(action==='copy'||action==='copy-full'){await host.navigator.clipboard.writeText(action==='copy-full'?controller.invite:controller.roomCode||controller.invite);notice=action==='copy-full'?'完整邀请已复制（不含密码）':'房间邀请已复制';}
    else if(action.startsWith('lock:')){const seat=Number(action.split(':')[1]);controller.lock(seat,!controller.view.lockedSeats?.[seat]);}
    else if(action.startsWith('move:'))controller.send('move',{seat:Number(action.slice(5))});
-   else if(action.startsWith('kick:')){const seat=Number(action.split(':')[1]);if(host.confirm('移出这名玩家？开局后的角色与已提交行动会保留。'))controller.kick(seat);}
-   else if(action.startsWith('skip:')){const seat=Number(action.split(':')[1]);if(host.confirm('将该离线角色本轮行动记为跳过？'))controller.skip(seat);}
+   else if(action.startsWith('kick:')){
+    const seat=Number(action.slice(5)),player=controller.view?.players[seat];
+    if(player&&await ask('移出队友',`将「${player.name}」移出房间？开局后的角色与已提交行动会保留。`,'移出',true)
+     &&controller.view.players[seat]?.id===player.id)controller.kick(seat);
+   }
+   else if(action.startsWith('skip:')){
+    const seat=Number(action.slice(5)),round=controller.view.round;
+    if(await ask('跳过离线角色','该角色本轮会按跳过行动处理。','跳过',true)&&controller.view.round===round)controller.skip(seat);
+   }
    else if(action==='ready')controller.send('ready',{ready:!controller.view.players.find(p=>p?.id===controller.myId)?.ready});
-   else if(action==='start'){controller.start();if(!presentation.isSurface())await presentation.close();foreground();}
+   else if(action==='start'){if(await controller.start()){if(!presentation.isSurface())await presentation.close();foreground();}}
    else if(action==='generate'){render();await controller.generate();}
    else if(action==='cancel')controller.cancel();
    else if(action==='action'){controller.send('action',{content:drafts.action});drafts.action='';}
+   else if(action.startsWith('reroll:')||action.startsWith('branch:')){
+    const [kind,resultId]=action.split(':');
+    if(await ask(kind==='reroll'?'发起重 Roll 投票':'发起分支投票',
+     (kind==='reroll'?'用原行动重新生成上轮回复。':'从该剧情楼层另存一段对话，再带全队进入分支。')+
+     '发起计为一票赞成，60 秒内须获得在线玩家一致同意。','发起投票')){
+     controller.send('propose-vote',{kind,resultId});
+    }
+   }
+   else if(action.startsWith('vote:')&&controller.view?.vote){
+    controller.send('cast-vote',{voteId:controller.view.vote.id,yes:action==='vote:yes'});
+   }
+   else if(action.startsWith('processor:'))controller.toggleProcessor(action.slice(10));
    else if(action==='chat'){controller.send('chat',{content:drafts.chat});drafts.chat='';}
-   else if(action==='clear'){if(host.confirm('清空所有人的聊天室记录？'))controller.clearChat();}
-   else if(action==='end'){if(host.confirm('结束联机并清空聊天室？'))await controller.end();}
+   else if(action==='clear'){
+    if(await ask('清空队伍聊天','所有玩家的队伍聊天室记录都会清空。','清空记录',true))controller.clearChat();
+   }
+   else if(action==='end'){
+    if(await ask('结束联机','所有玩家将离开房间，队伍聊天室记录也会清空。','结束联机',true))await controller.end();
+   }
    else if(action==='leave'){
-    if(host.confirm('离开当前房间？如需继续，可通过原邀请重新加入。'))await controller.leave();
+    if(await ask('离开房间','如需继续，可以通过原邀请重新加入。','离开房间',true))await controller.leave();
    }
    else if(action==='reconnect')await controller.reconnect();
    else if(action.startsWith('takeover:'))controller.requestTakeover(Number(action.slice(9)));
@@ -269,7 +313,13 @@ function boot(){
    else if(action.startsWith('append:')){
     controller.refreshHostChat();
     if(controller.hostChatPaused)throw Error('请返回联机房间绑定的酒馆聊天');
-    const r=controller.view.results[Number(action.split(':')[1])];if(host.confirm('将这一轮的正文和你的状态栏写入当前打开的酒馆聊天？')){await adapter.append(r);notice='已写入当前聊天';}}
+    const r=controller.view.results[Number(action.split(':')[1])];
+    if(await ask('写入酒馆聊天','将这一轮的剧情和你的状态栏写入当前打开的酒馆聊天。','写入')){
+     controller.refreshHostChat();
+     if(controller.hostChatPaused)throw Error('请返回联机房间绑定的酒馆聊天');
+     await adapter.append(r);notice='已写入当前聊天';
+    }
+   }
   }catch(error){fail(error);}finally{
    if(operation)busy--;
    render();
@@ -288,6 +338,7 @@ function boot(){
   if(!e.repeat)void presentation.back();
  };doc.addEventListener('keydown',onKey,true);
  let releaseTask=Promise.resolve();
+ const rounds=Object.freeze({version:1,registerRoundProcessor:controller.processors.register});
  const instance={
   get disposed(){return disposed;},
   get settled(){return releaseTask;},
@@ -298,7 +349,10 @@ function boot(){
    window.removeEventListener('pagehide',onPageHide);
    window.removeEventListener('unload',onPageHide);
    doc.removeEventListener('keydown',onKey,true);
+   if(mapProgressFrame)host.cancelAnimationFrame(mapProgressFrame);
+   confirmation.dispose();
    controller.close();
+   if(host.MieMieMultiplayerLobby===rounds)delete host.MieMieMultiplayerLobby;
    for(const t of Object.values(tools))t.dispose();
    tools={};ceremony.dispose();settings.dispose();header.dispose();composerLock.dispose();
    releaseTask=presentation.dispose().finally(()=>{if(host[key]===instance)delete host[key];});
@@ -307,6 +361,8 @@ function boot(){
  };
  const onPageHide=()=>instance.dispose();
  host[key]=instance;
+ host.MieMieMultiplayerLobby=rounds;
+ host.dispatchEvent(new host.CustomEvent('miemie:lobby:ready',{detail:rounds}));
  window.addEventListener('pagehide',onPageHide,{once:true});
  window.addEventListener('unload',onPageHide,{once:true});
  render();

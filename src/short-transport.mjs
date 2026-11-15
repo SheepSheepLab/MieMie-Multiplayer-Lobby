@@ -21,7 +21,7 @@ export function listenShort(peer,key,callbacks){const connections=new Set();let 
  });return ()=>{for(const c of connections)c.close();};
 }
 export async function connectShort(peer,invitation,access,callbacks){const info=parseShort(invitation),clientNonce=nonce(),peerId=peerIdFor(info.code);
- return new Promise((resolve,reject)=>{const conn=peer.connect(peerId,{reliable:true,serialization:'json'});if(!conn)throw Error('信令连接已断开，请重新连接');let stage='challenge',context='',pub=null,fp='',key='',last=Date.now(),chain=Promise.resolve(),settled=false;
+ return new Promise((resolve,reject)=>{const conn=peer.connect(peerId,{reliable:true,serialization:'binary'});if(!conn)throw Error('信令连接已断开，请重新连接');let stage='challenge',context='',pub=null,fp='',key='',last=Date.now(),chain=Promise.resolve(),settled=false;
  const ice=trackIce(conn,peer);
  const stopHandshake=()=>{
   clearTimeout(timer);ice.stop();

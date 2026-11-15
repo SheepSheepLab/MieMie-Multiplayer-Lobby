@@ -26,7 +26,7 @@ try{
   window.headerFixture={context,emit(key){for(const fn of events.get(eventTypes[key])??[])fn('test event payload');},
    count:()=>[...events.values()].reduce((sum,group)=>sum+group.size,0)};
  });
- await page.addScriptTag({url:'/lobby.js'});const panel=page.locator('.mm-lobby');const orb=page.locator('[data-lobby-main]');await orb.waitFor();assert.equal(await panel.isHidden(),true);await page.addScriptTag({url:'/lobby.js'});assert.equal(await panel.count(),1);assert.equal(await panel.isHidden(),true);await orb.click();await panel.locator('[data-act="settings"]').waitFor();await page.locator('.mm-main[data-surface-state="open"]').waitFor();
+ await page.addScriptTag({url:'/lobby.js'});const panel=page.locator('.mm-main');const orb=page.locator('[data-lobby-main]');await orb.waitFor();assert.equal(await panel.isHidden(),true);await page.addScriptTag({url:'/lobby.js'});assert.equal(await panel.count(),1);assert.equal(await panel.isHidden(),true);await orb.click();await panel.locator('[data-act="settings"]').waitFor();await page.locator('.mm-main[data-surface-state="open"]').waitFor();
  assert.equal(await panel.locator('header h2').innerText(),'咩咩联机大厅 '+version);
  const subtitle=panel.locator('.mm-subtitle');
  assert.equal(await subtitle.innerText(),'请打开单人角色聊天');
