@@ -9,6 +9,11 @@ const version=pkg.version;
 const {id:productId,repository}=manifest;
 const {scriptId}=PRODUCT;
 const tag='v'+version;
+const turnCredentialUrl=process.env.MIEMIE_TURN_CREDENTIAL_URL||'';
+if(turnCredentialUrl){
+  const url=new URL(turnCredentialUrl);
+  if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash)throw Error('The built-in TURN service must use a public HTTPS URL without credentials');
+}
 const hash=value=>createHash('sha256').update(value).digest('hex');
 if(!/^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)$/.test(version))throw Error('Product version must be plain MAJOR.MINOR.PATCH');
 if(pkg.name!==PRODUCT.packageName||pkg.author!==PRODUCT.author||pkg.repository!==PRODUCT.repository||pkg.license!=='GPL-3.0-or-later')throw Error('Product identity mismatch');
@@ -18,7 +23,7 @@ if(manifest.version!==version||manifest.name!==PRODUCT.name||manifest.author!==P
    manifest.contributes.launcher.title!==PRODUCT.launcherName||manifest.entry!=='lobby.js')
   throw Error('Release manifest identity mismatch');
 await mkdir('dist',{recursive:true});
-await build({entryPoints:['src/main.ts'],bundle:true,format:'iife',target:['safari16','chrome110'],outfile:'dist/lobby.js',loader:{'.css':'text','.png':'dataurl'},legalComments:'eof',minify:false});
+await build({entryPoints:['src/main.ts'],bundle:true,format:'iife',target:['safari16','chrome110'],outfile:'dist/lobby.js',loader:{'.css':'text','.png':'dataurl'},define:{__MIEMIE_TURN_CREDENTIAL_URL__:JSON.stringify(turnCredentialUrl)},legalComments:'eof',minify:false});
 await mkdir('dist/licenses',{recursive:true});
 let notices=await readFile('THIRD_PARTY_NOTICES.txt','utf8');
 for(const file of ['BRAND.md','ASSETS-LICENSE.md']){await copyFile(file,'dist/'+file);notices+='\n\n'+file+'\n'+await readFile(file,'utf8');}

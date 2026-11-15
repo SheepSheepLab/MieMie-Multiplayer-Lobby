@@ -1,0 +1,30 @@
+[Unit]
+Description=MieMie Multiplayer Lobby TURN
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=turnserver
+Group=turnserver
+RuntimeDirectory=miemie-multiplayer-lobby-turn
+RuntimeDirectoryMode=0750
+ExecStart=/usr/bin/turnserver -c /etc/miemie-multiplayer-lobby/turnserver.conf
+Restart=on-failure
+RestartSec=3s
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+CapabilityBoundingSet=
+MemoryMax=192M
+TasksMax=64
+LimitNOFILE=4096
+
+[Install]
+WantedBy=multi-user.target

@@ -1,11 +1,16 @@
 import {Room,uuid} from './room.mjs';
 import {createGuestResume} from './guest-resume.mjs';
+import {connectWithRelay} from './ice.mjs';
 import {identity,inviteFor,openPeer,listen,connect,secret,parseInvite} from './transport.mjs';
 import {allocatePeer,peerIdFor,listenShort,connectShort} from './short-transport.mjs';
 import {parseShort,fingerprint,passwordKey,nonce} from './short-auth.mjs';
 import {decodeRoomMap,encodeRoomMap,MAP_CHUNK_SIZE,MAP_CHUNK_WINDOW,roomMapAssets,validateMapDescriptor} from './room-map.mjs';
 const hostSaveKey='mm-lobby-host-v1';
 const returnToChat='请返回联机房间绑定的酒馆聊天';
+const mapFirstChunkMs=60000;
+const mapIdleMs=30000;
+const mapDownloadMs=600000;
+const mapProgress=sync=>Math.floor(sync.parts.length/sync.total*100);
 export class Controller {
  constructor(storage,adapter,notify=()=>{},transport={identity,openPeer,allocatePeer},session){Object.assign(this,{storage,adapter,notify,transport,connections:new Map(),waiting:new Set(),requests:new Map(),pending:[],guestResume:createGuestResume(session),hostChatPaused:false,mode:'none',view:null,connected:false,closed:true,config:{},epoch:0});}
  emit(){this.notify(this);}
@@ -88,7 +93,10 @@ export class Controller {
     this.connected=false;this.emit();
     if(!this.closed&&!this.leaving)this.retry=setTimeout(()=>this.reconnect().catch(()=>{}),5000);
    },authenticated:fp=>{if(this.epoch!==epoch)return;this.storage.setItem(this.pinKey,fp);const k='mm-lobby-token3:'+this.namespace()+':'+fp;this.token=this.storage.getItem(k)||secret();this.storage.setItem(k,this.token);}};
-   const connection=await(this.protocol==='short'?connectShort(p,this.invite,this.access,callbacks):connect(p,this.invite,callbacks));if(this.closed||this.epoch!==epoch){connection.close();return;}this.connection=connection;this.connected=true;this.resend=true;
+   const connection=await connectWithRelay(p,()=>this.protocol==='short'?connectShort(p,this.invite,this.access,callbacks):connect(p,this.invite,callbacks),()=>{
+    this.error='正在尝试通过 TURN 中继重新连接…';this.emit();
+   });
+   if(this.closed||this.epoch!==epoch){connection.close();return;}this.connection=connection;this.connected=true;this.error='';this.resend=true;
    let sent=false,timer;
    sendJoin=()=>{
     if(sent||this.epoch!==epoch||!connection.open)return;
@@ -148,53 +156,69 @@ export class Controller {
     }
    }
   }
-  else if(m.type==='map-chunk'){void this.receiveMapChunk(m);}
+  else if(m.type==='map-chunk'){void this.receiveMapChunk(m);return;}
   else if(m.type==='seats'){this.seats=m.seats;this.seatPhase=m.phase;}else if(m.type==='ack')this.requests.delete(m.requestId);else if(m.type==='error'){this.requests.delete(m.requestId);this.error=m.message;}this.emit();
  }
  resendRequests(){for(const request of this.requests.values())this.connection?.send(request);}
+ stopMapDownload(sync){
+  clearTimeout(sync?.idleTimer);
+  clearTimeout(sync?.totalTimer);
+ }
  resetMapSync(){
-  clearTimeout(this.mapSync?.timer);
+  this.stopMapDownload(this.mapSync);
   this.mapSync=null;
  }
  requestRoomMap(){
   if(!this.view?.map||!this.connection?.open)return;
   this.resetMapSync();
-  try{
-   const total=validateMapDescriptor(this.view.map);
-   this.mapSync={state:'downloading',parts:[],total,descriptor:this.view.map,roomId:this.view.id};
-   this.requestMapWindow(this.mapSync);
-  }catch(error){this.mapSync={state:'error',error:error.message};}
+  let total;
+  try{total=validateMapDescriptor(this.view.map);}
+  catch(error){this.mapSync={state:'error',error:error.message};this.emit();return;}
+  const sync=this.mapSync={state:'downloading',parts:[],total,descriptor:this.view.map,roomId:this.view.id,transferId:uuid()};
+  sync.totalTimer=setTimeout(()=>this.failMap(sync,`地图下载达到总时限（${mapProgress(sync)}%）。`),mapDownloadMs);
+  this.watchMapProgress(sync);
+  try{this.requestMapWindow(sync);}catch(error){this.failMap(sync,error.message);return;}
   this.emit();
  }
  requestMapWindow(sync){
-  clearTimeout(sync.timer);
-  sync.timer=setTimeout(()=>this.failMap(sync,'下载地图超时，可重新同步。'),25000);
-  this.connection.send({type:'map-window',start:sync.parts.length});
+  this.connection.send({type:'map-window',start:sync.parts.length,transferId:sync.transferId});
+ }
+ watchMapProgress(sync){
+  clearTimeout(sync.idleTimer);
+  const started=sync.parts.length>0;
+  sync.idleTimer=setTimeout(()=>this.failMap(sync,started
+   ?`地图下载停在 ${mapProgress(sync)}%，30 秒未收到新分片。`
+   :'等待地图超时，60 秒未收到房主发送的首个分片。'),started?mapIdleMs:mapFirstChunkMs);
  }
  failMap(sync,error){
   if(this.mapSync!==sync)return;
-  clearTimeout(sync.timer);
+  this.stopMapDownload(sync);
   sync.state='error';sync.error=error;sync.parts=[];
   this.emit();
  }
  async receiveMapChunk(message){
   const sync=this.mapSync;
-  if(sync?.state!=='downloading')return;
+  if(sync?.state!=='downloading'||(message.transferId!==undefined&&message.transferId!==sync.transferId))return;
   try{
    if(message.index!==sync.parts.length||typeof message.data!=='string'||message.data.length>MAP_CHUNK_SIZE
      ||(message.index<sync.total-1&&message.data.length!==MAP_CHUNK_SIZE))throw Error('收到的地图分片无效');
+   const previousProgress=mapProgress(sync);
    sync.parts.push(message.data);
    if(sync.parts.length===sync.total){
-    clearTimeout(sync.timer);sync.state='verifying';
-    const map=await decodeRoomMap(sync.descriptor,sync.parts.join(''));
+    this.stopMapDownload(sync);sync.state='verifying';this.emit();
+    const data=sync.parts.join('');sync.parts=[];
+    const map=await decodeRoomMap(sync.descriptor,data);
     if(this.mapSync!==sync)return;
-    sync.parts=[];
     if(map.roomId!==sync.roomId)throw Error('地图属于另一个房间');
     sync.map=map;sync.assets=roomMapAssets(map);
     if(sync.assets.requiresConsent&&!await this.adapter.mapStore.get('allow:'+sync.descriptor.hash)){
      if(this.mapSync===sync){sync.state='confirm';this.emit();}
     }else if(this.mapSync===sync)await this.installRoomMap();
-   }else if(sync.parts.length%MAP_CHUNK_WINDOW===0){this.requestMapWindow(sync);this.emit();}
+   }else{
+    this.watchMapProgress(sync);
+    if(sync.parts.length%MAP_CHUNK_WINDOW===0)this.requestMapWindow(sync);
+    if(sync.parts.length===1||mapProgress(sync)!==previousProgress)this.emit();
+   }
   }catch(error){this.failMap(sync,error.message);}
  }
  async installRoomMap(){
@@ -284,8 +308,9 @@ export class Controller {
   if(m.type==='map-window'){
    if(!this.mapWire||!Number.isSafeInteger(m.start)||m.start<0||m.start%MAP_CHUNK_WINDOW!==0)throw Error('无效的地图分片请求');
    const {data}=this.mapWire;
+   const transferId=typeof m.transferId==='string'&&/^[\da-f-]{36}$/i.test(m.transferId)?m.transferId:undefined;
    for(let i=m.start;i<m.start+MAP_CHUNK_WINDOW&&i*MAP_CHUNK_SIZE<data.length;i++){
-    conn.send({type:'map-chunk',index:i,data:data.slice(i*MAP_CHUNK_SIZE,(i+1)*MAP_CHUNK_SIZE)});
+    conn.send({type:'map-chunk',index:i,data:data.slice(i*MAP_CHUNK_SIZE,(i+1)*MAP_CHUNK_SIZE),transferId});
    }
    return;
   }

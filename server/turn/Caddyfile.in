@@ -1,0 +1,8 @@
+@HOST@ {
+	handle /v1/ice {
+		reverse_proxy 127.0.0.1:18798 {
+			header_up X-MieMie-Client-IP {http.request.remote.host}
+		}
+	}
+	respond 404
+}

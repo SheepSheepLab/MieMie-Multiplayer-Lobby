@@ -1,10 +1,10 @@
 # 咩咩联机大厅 / MieMie Multiplayer Lobby
 
 咩咩联机大厅是开发中的 2–4 人 SillyTavern AIRP 工具。由房主运行 AI，队友共享剧情并接收各自的状态栏。房间支持公开与暗行动、队伍聊天及断线恢复。
-当前开发基线：0.7.1。唯一版本源为 package.json；构建器校验锁文件及 Manifest，并生成脚本名称和文件名，UI 读取同一版本。
+当前开发基线：0.7.2。唯一版本源为 package.json；构建器校验锁文件及 Manifest，并生成脚本名称和文件名，UI 读取同一版本。
 产品作者及生态发起人为 SheepSheep。SheepSheepLab 是官方开发、维护与发布命名空间。
-官方源码仓库为 [SheepSheepLab/MieMie-Multiplayer-Lobby](https://github.com/SheepSheepLab/MieMie-Multiplayer-Lobby)。仓库目前用于开发源码托管。
-本地执行 `npm ci` 和 `npm run build` 后，可将生成的 `dist/MieMie-Multiplayer-Lobby-Extension-0.7.1.json` 导入酒馆助手全局脚本。在酒馆笑脸中保存 Persona 后，大厅会更新身份。地图房间的玩家都需要 0.7.0 或更新版本。当前仍需验证不同公网网络间的互通和实际模型长回合。
+官方源码和测试版安装包通过 [SheepSheepLab/MieMie-Multiplayer-Lobby](https://github.com/SheepSheepLab/MieMie-Multiplayer-Lobby) 提供。
+本地执行 `npm ci` 和 `npm run build` 后，可将生成的 `dist/MieMie-Multiplayer-Lobby-Extension-0.7.2.json` 导入酒馆助手全局脚本。在酒馆笑脸中保存 Persona 后，大厅会更新身份。地图房间的玩家都需要 0.7.0 或更新版本。当前仍需验证不同公网网络间的互通和实际模型长回合。
 0.5.1 的大厅主标题与其他咩咩工具对齐，副标题实时显示当前打开的单人角色聊天。
 
 ## 酒馆版本与运行条件
@@ -14,6 +14,12 @@
 - 联机需要客户端支持 WebRTC、WebSocket 与安全环境中的 Web Crypto。浏览器版使用 HTTPS 或本机回环地址。
 
 逐版请求和跨版本联机的验收范围见 [测试记录](TESTING.txt)。
+
+### 跨网连接
+
+默认通过 PeerJS 信令交换连接信息，由 WebRTC 尝试直连。GitHub 的 0.7.2 测试版内置咩咩香港 TURN 地址并自动取得临时凭据。玩家照常用房间号和可选房间密码入房，协商失败时客户端会再尝试仅使用中继一次。角色资源、聊天和行动仍由房主端分发，TURN 转发 WebRTC 数据。服务端模板放在 [server/turn](server/turn)，部署方式见 [服务端说明](server/README.txt)。
+
+自托管时可通过「高级连接设置」指定自己的 `iceServers` 或 `turnCredentialUrl`，既有 `config.iceServers` 配置也可继续使用。连接失败的提示会显示候选类型和 ICE 错误码。
 
 ## 加入与换位
 

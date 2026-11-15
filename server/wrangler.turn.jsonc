@@ -1,0 +1,17 @@
+{
+  "name": "miemie-multiplayer-lobby",
+  "main": "turn-worker.mjs",
+  "compatibility_date": "2026-09-25",
+  "ratelimits": [
+    {
+      "name": "TURN_CLIENT_LIMIT",
+      "namespace_id": "8001",
+      "simple": {"limit": 12, "period": 60}
+    },
+    {
+      "name": "TURN_TOTAL_LIMIT",
+      "namespace_id": "8002",
+      "simple": {"limit": 120, "period": 60}
+    }
+  ]
+}

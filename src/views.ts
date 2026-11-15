@@ -25,7 +25,7 @@ export function createViews(drafts:any){
   <p class="mm-fine-print">进房后自动入座，重连回到原席位。</p>
   ${takeoverSeats(c,busy)}`:
  `<label>房间名称</label>${input('title','为这次冒险命名')}<label>行动可见性 · 创建后固定</label><div class="mm-mode-cards">${button('mode:public','<strong>公开行动</strong><small>共享选择，一起推进故事</small>',false,drafts.actionVisibility==='public'?'selected':'')}${button('mode:hidden','<strong>暗行动</strong><small>只看见已提交，保留博弈</small>',false,drafts.actionVisibility==='hidden'?'selected':'')}</div><label>入房密码 · 选填</label>${input('password','留空表示无密码')}<details data-detail="scene-draft" class="mm-network mm-scene-draft"><summary>公开场景资料 · 选填</summary><p>仅同步下面填写的文字，所有入房玩家可见。</p>${sceneFields.map(([key,label,max])=>`<label>${label}<textarea data-field="${key}" maxlength="${max}" aria-label="${label}">${escape(drafts[key])}</textarea></label>`).join('')}</details>${button('host',busy?'正在创建…':'创建房间',busy||!canHost,'primary mm-wide')}${!canHost?'<p class="mm-fine-print" role="status">请先在酒馆打开单个角色的聊天。</p>':''}<p class="mm-fine-print">席位数量在房间内设置。</p>`}
- <details data-detail="network" class="mm-network"><summary>高级连接设置</summary><label>加入方式<select data-field="joinMode"><option value="short" ${drafts.joinMode==='short'?'selected':''}>6 位房间号 + 可选密码</option><option value="long" ${drafts.joinMode==='long'?'selected':''}>兼容旧版长邀请码</option></select></label><p>默认使用公共信令。需要时填写自己的 PeerJS / STUN / TURN 配置。</p>${input('network','网络配置 JSON',true)}</details></div>`;}
+ <details data-detail="network" class="mm-network"><summary>高级连接设置</summary><label>加入方式<select data-field="joinMode"><option value="short" ${drafts.joinMode==='short'?'selected':''}>6 位房间号 + 可选密码</option><option value="long" ${drafts.joinMode==='long'?'selected':''}>兼容旧版长邀请码</option></select></label><p>默认尝试直连。房主和来宾可在这里粘贴 TURN 服务的连线配置，遇到网络限制时会自动尝试中继。</p>${input('network','网络配置 JSON',true)}</details></div>`;}
  function takeoverSeats(c:any,busy:boolean){
   if(c.mode!=='guest'||!c.connected||c.view||['lobby','generating','ended'].includes(c.seatPhase))return '';
   if(!c.seatPhase&&!c.error?.includes('剧情已经开始'))return '';
@@ -71,7 +71,8 @@ export function createViews(drafts:any){
     (scripts.length?'<p>'+scripts.map(escape).join('、')+(assets.scripts.length>scripts.length?' 等 '+assets.scripts.length+' 个脚本':'')+'</p>':'')+
     (assets.regexCount?'<p>'+assets.regexCount+' 条角色正则</p>':'')+button('map-confirm','确认并打开联机对话',false,'primary')+'</div>';
   }
-  const label=sync?.state==='downloading'?'正在同步地图 · '+Math.floor(sync.parts.length/sync.total*100)+'%':'正在同步角色卡、头像与世界书…';
+  const label=sync?.state==='verifying'?'正在校验地图资源…':sync?.state==='installing'?'正在将地图导入酒馆…':
+   sync?.state==='downloading'&&sync.parts.length?'正在下载地图 · '+Math.floor(sync.parts.length/sync.total*100)+'%':'正在等待房主发送地图…';
   return '<p class="mm-session-pause" role="status">'+label+'</p>';
  }
  function linkedChat(c:any,busy:boolean){
