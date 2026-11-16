@@ -14,6 +14,7 @@ import styles from './ui.css';
 import {createOpeningCeremony} from './opening-ceremony';
 import {createChatComposerLock} from './chat-composer-lock';
 import {createLobbyConfirmation} from './confirmation';
+import {createAttachmentPreview} from './attachment-preview';
 import ICON from '../assets/multiplayer-lobby-icon.png';
 const host=window.parent?.SillyTavern?window.parent:window;
 const key='__miemieMultiplayerLobbyV1';
@@ -51,7 +52,9 @@ function boot(){
  const ceremony=createOpeningCeremony(host,ICON);let previousPhase='',previousRoom='',pendingCeremony=false;
  const composerLock=createChatComposerLock(doc);
  const confirmation=createLobbyConfirmation(doc);
+ const attachmentPreview=createAttachmentPreview(doc);
  let mapProgressFrame=0;
+ let openAttachment:{resultId:string,hash:string,path:string,branchId:string|null} | null=null;
  const appearance=createLauncherAppearance(host),settings=createLauncherSettings(panel,frame,appearance),tracker=createActivityTracker();
  let disposed=false,composing=false,entryTab='join',busy=0,notice='',controller:any,roomId:string|null=null,tools:Record<string,ReturnType<typeof createToolWindow>>={};
  const drafts={...adapter.profile(),title:'今晚一起冒险',invite:'',chat:'',action:'',network:'',actionVisibility:'public',password:'',joinMode:'short',intro:'',rules:'',opening:'',resumePassword:''};
@@ -94,13 +97,17 @@ function boot(){
    });
   }else render();
  },undefined,host.sessionStorage);
+ const floorEvents=adapter.onFloorChange(messageId=>{
+  controller.scheduleNativeSync(messageId);
+  refreshAttachmentRails();
+ });
  let embeddedTool: 'action'|'chat'|null=null;
  const stopLayer=observeWindowLayer(host,panel);
  const presentation=startLobbyPresentation({
   host,panel,icon:ICON,appearance,
   dismissLayer,resetLayers,
   onChange(){
-   header.refresh(presentation.isActive());
+   header.refresh(presentation.isActive());floorEvents.connect();
    if(presentation.isActive())controller.refreshHostChat();
    if(!presentation.isSurface()&&embeddedTool){embeddedTool=null;composing=false;}
    render();foreground();
@@ -124,7 +131,7 @@ function boot(){
   return true;
  }
  function resetLayers(){
-  settings.close();ceremony.close(false);confirmation.cancel();embeddedTool=null;composing=false;
+  settings.close();ceremony.close(false);confirmation.cancel();attachmentPreview.close();embeddedTool=null;composing=false;
  }
  function foreground(){if(ceremony.isOpen()||!presentation.canUseTools())return;for(const t of Object.values(tools))t.foreground();}
  function fail(error:any){if(disposed)return;notice=error?.message||String(error);render();}
@@ -136,6 +143,50 @@ function boot(){
    try{adapter.refreshMapPreset(binding,inLinkedChat);}catch(error){console.warn('[咩咩联机大厅]',error);}
   }
   if(binding)void controller.syncTranscript();
+  refreshAttachmentRails();
+ }
+ async function showAttachment(resultId:string,index:number){
+  const room=controller.view;
+  const result=room?.results.find(row=>row.id===resultId);
+  const attachment=result?.attachments?.[index];
+  if(!attachment)return;
+  if(controller.attachments.status(attachment.hash)==='failed'){controller.attachments.retry(attachment.hash);return;}
+  const url=await controller.attachments.open(attachment);
+  if(!url)throw Error('附件尚未存储成功');
+  if(!disposed&&controller.view?.id===room.id&&controller.view.branch?.id===room.branch?.id){
+   openAttachment={resultId,hash:attachment.hash,path:attachment.path,branchId:room.branch?.id??null};
+   attachmentPreview.open(attachment.path,attachment.type,url);
+  }
+ }
+ function refreshAttachmentRails(){
+  const view=controller?.view,binding=controller?.chatBinding();
+  const active=new Set<HTMLElement>();
+  if(binding&&view?.results.some(row=>row.attachments?.length)&&adapter.matchesChat(binding)){
+   for(const {id,floor} of adapter.resultFloors(binding)){
+    const result=view.results.find(row=>row.id===id);
+    if(!result?.attachments?.length)continue;
+    const message=doc.querySelector<HTMLElement>('#chat .mes[mesid="'+floor+'"] .mes_text');
+    if(!message)continue;
+    const ready=result.attachments.map(entry=>controller.mode==='host'?'ready':controller.attachments.status(entry.hash));
+    let rail=message.nextElementSibling as HTMLElement;
+    const signature=JSON.stringify([id,result.attachments.map(entry=>[entry.hash,entry.path]),ready]);
+    if(!rail?.classList.contains('mm-lobby-native-attachments')){
+     rail=doc.createElement('div');rail.className='mm-lobby-native-attachments';message.after(rail);
+    }
+    active.add(rail);
+    if(rail.dataset.entries===signature)continue;
+    rail.dataset.entries=signature;
+    rail.replaceChildren(...result.attachments.map((entry,index)=>{
+     const control=doc.createElement('button');
+     control.type='button';
+     control.textContent=(ready[index]==='failed'?'重试 · ':'')+entry.path.split('/').at(-1);
+     control.disabled=ready[index]==='pending';
+     control.addEventListener('click',()=>void showAttachment(id,index).catch(fail));
+     return control;
+    }));
+   }
+  }
+  for(const rail of doc.querySelectorAll<HTMLElement>('.mm-lobby-native-attachments'))if(!active.has(rail))rail.remove();
  }
  function canHost(){
   try{adapter.hostChat();return true;}catch{return false;}
@@ -148,6 +199,10 @@ function boot(){
  function render(){
   if(disposed||!controller)return;
   const v=controller.view;
+  if(openAttachment&&(openAttachment.branchId!==(v?.branch?.id??null)||!v?.results.some(row=>
+   row.id===openAttachment.resultId&&row.attachments?.some(entry=>entry.hash===openAttachment.hash&&entry.path===openAttachment.path)))){
+   attachmentPreview.close();openAttachment=null;
+  }
   hostChatAvailable=!v&&entryTab==='create'&&canHost();
   refreshLinkedChat();
   if(!v)syncPersonas();
@@ -156,6 +211,7 @@ function boot(){
   previousRoom=v?.id||'';previousPhase=v?.phase||'';
   if(roomId!==(v?.id||null)){
    confirmation.cancel();
+   attachmentPreview.close();
    roomId=v?.id||null;embeddedTool=null;composing=false;drafts.action='';drafts.chat='';
    for(const t of Object.values(tools))t.dispose();
    tools={};tracker.update(null,controller.myId);
@@ -297,6 +353,10 @@ function boot(){
     controller.send('cast-vote',{voteId:controller.view.vote.id,yes:action==='vote:yes'});
    }
    else if(action.startsWith('processor:'))controller.toggleProcessor(action.slice(10));
+   else if(action.startsWith('attachment:')){
+    const [,result,index]=action.split(':');
+    await showAttachment(result,Number(index));
+   }
    else if(action==='chat'){controller.send('chat',{content:drafts.chat});drafts.chat='';}
    else if(action==='clear'){
     if(await ask('清空队伍聊天','所有玩家的队伍聊天室记录都会清空。','清空记录',true))controller.clearChat();
@@ -338,7 +398,7 @@ function boot(){
   if(!e.repeat)void presentation.back();
  };doc.addEventListener('keydown',onKey,true);
  let releaseTask=Promise.resolve();
- const rounds=Object.freeze({version:1,registerRoundProcessor:controller.processors.register});
+ const rounds=Object.freeze({version:1,apiVersion:1,register:controller.extensions.register,registerRoundProcessor:controller.processors.register});
  const instance={
   get disposed(){return disposed;},
   get settled(){return releaseTask;},
@@ -351,6 +411,7 @@ function boot(){
    doc.removeEventListener('keydown',onKey,true);
    if(mapProgressFrame)host.cancelAnimationFrame(mapProgressFrame);
    confirmation.dispose();
+   attachmentPreview.dispose();floorEvents.disconnect();controller.extensions.dispose();
    controller.close();
    if(host.MieMieMultiplayerLobby===rounds)delete host.MieMieMultiplayerLobby;
    for(const t of Object.values(tools))t.dispose();

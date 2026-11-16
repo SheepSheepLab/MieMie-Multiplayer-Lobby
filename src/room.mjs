@@ -258,8 +258,12 @@ export class Room {
       players:s.players.map(p=>p?{id:p.id,seat:p.seat,name:p.name,description:p.description,online:p.online,ready:p.ready}:null),
       scene:publicScene(s.scene),map:s.mapDescriptor,actions:visibleActions(s.actions),chat:structuredClone(s.chat),members:[...s.members],
       vote:s.vote&&structuredClone(s.vote),operation:s.operation?.kind??null,branch:s.branch&&structuredClone(s.branch),
-      results:s.results.map(r=>({id:r.id,round:r.round,variant:r.variant??0,story:r.story,actions:visibleActions(r.actions),
-        status:r.players.find(p=>p.playerId===id)?.status||'',message:r.players.find(p=>p.playerId===id)?.message||r.story}))};
+      results:s.results.map(r=>{
+        const status=r.players.find(p=>p.playerId===id)?.status||'';
+        const story=r.displayStory??r.story;
+        return {id:r.id,round:r.round,variant:r.variant??0,displayRevision:r.displayRevision??0,story,
+          actions:visibleActions(r.actions),status,message:status?story+'\n\n'+status:story};
+      })};
   }
   seats() { return this.state.players.map((p,i)=>p?{seat:p.seat,name:p.name,online:p.online}:this.state.lockedSeats?.[i]?{seat:i,locked:true}:null); }
 }

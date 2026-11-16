@@ -1,6 +1,7 @@
 import {expandWorldInfo} from './worldinfo.mjs';
 import {participantContext} from './context.mjs';
 import {createTavernMapAdapter} from './tavern-room-map.mjs';
+import {ATTACHMENT_TYPES,MAX_ATTACHMENT_BYTES,attachmentPath} from './shared-attachments.mjs';
 
 function roomMacroEngine(context){
  const engine=context.macros?.engine;
@@ -73,6 +74,56 @@ export function createAdapter(host,helper=host.TavernHelper){
    if(!matchesChat(binding))return [];
    return Array.from(context().chat).flatMap((message,floor)=>typeof message.extra?.miemie_lobby_result==='string'
     ?[{id:message.extra.miemie_lobby_result,floor}]:[]);
+  },
+  floorMessage(binding,messageId){
+   if(!matchesChat(binding))return null;
+   const chat=context().chat;
+   const message=messageId===undefined?Array.from(chat).findLast(row=>row?.extra?.miemie_lobby_result):chat[messageId];
+   if(!message || message.is_user || message.is_system || typeof message.extra?.miemie_lobby_result!=='string')return null;
+   return {resultId:message.extra.miemie_lobby_result,variant:message.extra.miemie_lobby_variant??0,text:message.mes,
+    media:Array.from(message.extra.media??[]).map(item=>item?.url),
+    image:message.extra.image};
+  },
+  onFloorChange(callback){
+   let source, hooks=[];
+   function connect(){
+    const c=context();
+    if(!c?.eventSource || c.eventSource===source)return;
+    disconnect();source=c.eventSource;
+    hooks=['MESSAGE_UPDATED','MESSAGE_EDITED','CHARACTER_MESSAGE_RENDERED','CHAT_CHANGED','MEDIA_ATTACHMENT_DELETED']
+     .map(name=>c.eventTypes?.[name]).filter(Boolean);
+    hooks.forEach(name=>source.on(name,callback));
+   }
+   function disconnect(){
+    hooks.forEach(name=>source?.removeListener(name,callback));
+    source=null;hooks=[];
+   }
+   connect();
+   return {connect,disconnect};
+  },
+  nativeAttachments(message){
+   const files=[];
+   for(const source of new Set([...(message.media??[]),message.image])){
+    if(typeof source!=='string'||source.length>1000)continue;
+    try{
+     const url=new URL(source,host.location.href);
+     if(url.origin!==host.location.origin||url.search||url.hash)continue;
+     const path=attachmentPath(decodeURIComponent(url.pathname).replace(/^\//,''));
+     if(!/^(?:user\/(?:images|files)|images|files)\//.test(path))continue;
+     const suffix=path.split('.').at(-1).toLowerCase();
+     const type=Object.entries(ATTACHMENT_TYPES).find(([,ext])=>ext===suffix||ext==='jpg'&&suffix==='jpeg')?.[0];
+     if(type)files.push({url:url.href,path,type});
+    }catch{/* Paths outside the current chat's native media surface require explicit sharing. */}
+   }
+   return files;
+  },
+  async readNativeAttachment(entry){
+   const response=await host.fetch(entry.url,{redirect:'error'});
+   if(!response.ok || Number(response.headers.get('content-length'))>MAX_ATTACHMENT_BYTES)throw Error('无法读取联机附件');
+   const blob=await response.blob();
+   if(blob.type===entry.type)return blob;
+   if(blob.type && blob.type!=='application/octet-stream')throw Error('联机附件类型不符');
+   return blob.slice(0,blob.size,entry.type);
   },
   async branchChat(binding,branch,isCurrent){
    if(!/^[0-9a-f-]{36}$/i.test(branch.id)||!binding?.chatRef?.avatar)throw Error('联机分支编号或对话无效');
@@ -224,7 +275,7 @@ export function createAdapter(host,helper=host.TavernHelper){
    });}finally{request.detach();active=null;}
   },
   async append(result){if(!helper?.createChatMessages)throw Error('未找到酒馆助手消息接口');await helper.createChatMessages([{role:'assistant',message:result.message,extra:{miemie_lobby_result:result.id}}]);},
-  async appendRound(binding,result){
+  async appendRound(binding,result,{host=false}={}){
    if(!matchesChat(binding))return false;
    if(!helper?.createChatMessages)throw Error('未找到酒馆助手消息接口');
    const chat=context().chat;
@@ -236,12 +287,21 @@ export function createAdapter(host,helper=host.TavernHelper){
    }
    const index=chat.findIndex(message=>message.extra?.miemie_lobby_result===result.id);
    const variant=result.variant??0;
-   if(index<0)messages.push({role:'assistant',message:result.message,extra:{miemie_lobby_result:result.id,miemie_lobby_variant:variant}});
-   else if((chat[index].extra?.miemie_lobby_variant??0)<variant){
+   const displayRevision=result.displayRevision??0;
+   const extra={miemie_lobby_result:result.id,miemie_lobby_variant:variant,miemie_lobby_display_revision:displayRevision};
+   if(index<0)messages.push({role:'assistant',message:result.message,extra});
+   else if((chat[index].extra?.miemie_lobby_variant??0)<variant||!host&&
+      (chat[index].extra?.miemie_lobby_variant??0)===variant&&(chat[index].extra?.miemie_lobby_display_revision??0)<displayRevision){
     if(!helper.setChatMessages)throw Error('当前酒馆助手不能更新已同步的回复');
-    const old=chat[index];
+   const old=chat[index];
+    const savedExtra={...old.extra,...extra};
+    if((old.extra?.miemie_lobby_variant??0)<variant){
+     delete savedExtra.media;
+     delete savedExtra.image;
+     savedExtra.media_index=0;
+    }
     await helper.setChatMessages([{message_id:index,message:result.message,
-     extra:{...old.extra,miemie_lobby_variant:variant}}]);
+     extra:savedExtra}]);
    }
    if(messages.length)await helper.createChatMessages(messages);
    return true;

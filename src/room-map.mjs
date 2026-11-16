@@ -122,5 +122,27 @@ export function createRoomMapStore(indexedDB) {
     get: key => access('readonly', store => store.get(key)),
     put: (key, value) => access('readwrite', store => store.put(value, key)),
     remove: key => access('readwrite', store => store.delete(key)),
+    async saveAttachment(roomId,hash,blob,maxBytes) {
+      const db=await database();
+      return new Promise((resolve,reject)=>{
+        const transaction=db.transaction('maps','readwrite'),store=transaction.objectStore('maps');
+        const key='attachment-index:'+roomId, request=store.get(key);
+        let failure;
+        request.onsuccess=()=>{
+          const entries=request.result??{};
+          const total=Object.values(entries).reduce((sum,size)=>sum+size,0)-(entries[hash]??0)+blob.size;
+          if(total>maxBytes){
+            failure=Error('联机对话的附件存储已达到 128 MiB');
+            transaction.abort();
+            return;
+          }
+          entries[hash]=blob.size;
+          store.put(entries,key);
+          store.put(blob,'attachment:'+roomId+':'+hash);
+        };
+        transaction.oncomplete=()=>resolve();
+        transaction.onabort=()=>reject(failure||transaction.error||Error('无法保存联机附件'));
+      });
+    },
   };
 }

@@ -354,6 +354,103 @@ try {
     message.extra?.miemie_lobby_result||message.extra?.miemie_lobby_action).map(message=>message.mes));
   assert.match(guestNative.join('\n'),/来宾查看车门.*润色后的剧情。.*来宾专属/s);
   assert.doesNotMatch(guestNative.join('\n'),/房主先调查座位|房主专属/);
+  if(process.env.MIEMIE_TEST_COLLABORATION==='1'){
+    await host.page.evaluate(()=>{
+      window.statusRegistration=MieMieMultiplayerLobby.register({
+        id:'fixture-polisher',name:'联机润色测试',version:'1.0.0',capabilities:['status'],
+      });
+      window.imageRegistration=MieMieMultiplayerLobby.register({
+        id:'fixture-image',name:'联机生图测试',version:'1.0.0',capabilities:['image','status'],
+      });
+      const floor=window.statusRegistration.forMessage();
+      if(floor.publishAttachment)throw Error('基础能力不应提供附件写入');
+      floor.reportStatus('working','正在润色第 1 回合');
+    });
+    await action(guest).getByText(/正在润色第 1 回合/).waitFor();
+    await host.page.evaluate(async ()=>{
+      const c=SillyTavern.getContext(),id=c.chat.findIndex(message=>message.extra?.miemie_lobby_result);
+      const floor=window.statusRegistration.forMessage(id);
+      await TavernHelper.setChatMessages([{message_id:id,message:'扩展写回后的正文。\n\n<status>仅房主可见的编辑状态</status>'}]);
+      floor.reportStatus('complete','润色完成');
+    });
+    await guest.page.waitForFunction(()=>SillyTavern.getContext().chat.some(m=>m.mes?.includes('扩展写回后的正文。')&&m.mes?.includes('来宾专属')));
+    assert.equal(await guest.page.evaluate(()=>SillyTavern.getContext().chat.some(m=>m.mes?.includes('仅房主可见的编辑状态'))),false);
+    await action(guest).getByText(/润色完成.*已送达 1\/1/s).waitFor();
+    const first=await host.page.evaluate(async ()=>{
+      const floor=window.imageRegistration.forMessage(),canvas=document.createElement('canvas');
+      canvas.width=canvas.height=200;
+      const context=canvas.getContext('2d'),pixels=context.createImageData(200,200);
+      for(let offset=0;offset<pixels.data.length;offset+=4096){
+        crypto.getRandomValues(pixels.data.subarray(offset,offset+4096));
+      }
+      context.putImageData(pixels,0,0);
+      const file=await new Promise(resolve=>canvas.toBlob(resolve,'image/png'));
+      window.fixtureImage=file;
+      floor.reportStatus('working','正在生成插图');
+      const entry=await floor.publishAttachment({path:'images/车站/插图.png',file});
+      floor.reportStatus('complete','插图完成');
+      return entry;
+    });
+    assert.ok(first.bytes>32768);
+    await action(guest).getByRole('button',{name:'插图.png'}).click();
+    const preview=guest.page.locator('.mm-attachment-preview:modal');
+    assert.equal(await preview.locator('p').textContent(),first.path);
+    const assetHash=()=>preview.locator('img').evaluate(async image=>{
+      const blob=await (await fetch(image.src)).arrayBuffer();
+      return [...new Uint8Array(await crypto.subtle.digest('SHA-256',blob))].map(value=>value.toString(16).padStart(2,'0')).join('');
+    });
+    assert.equal(await assetHash(),first.hash);
+    await preview.getByRole('button',{name:'返回'}).click();
+    const narration=await host.page.evaluate(async ()=>{
+      const voice=MieMieMultiplayerLobby.register({
+        id:'fixture-narrator',name:'语音测试',version:'1.0.0',capabilities:['audio'],
+      });
+      const data=new ArrayBuffer(44+32000),wav=new DataView(data);
+      const chunk=(at,text)=>Array.from(text).forEach((char,index)=>wav.setUint8(at+index,char.charCodeAt(0)));
+      chunk(0,'RIFF');wav.setUint32(4,data.byteLength-8,true);chunk(8,'WAVE');chunk(12,'fmt ');
+      wav.setUint32(16,16,true);wav.setUint16(20,1,true);wav.setUint16(22,1,true);
+      wav.setUint32(24,16000,true);wav.setUint32(28,32000,true);wav.setUint16(32,2,true);
+      wav.setUint16(34,16,true);chunk(36,'data');wav.setUint32(40,32000,true);
+      return voice.forMessage().publishAttachment({path:'audio/车站/旁白.wav',file:new Blob([data],{type:'audio/wav'})});
+    });
+    await action(guest).getByRole('button',{name:'旁白.wav'}).click();
+    assert.equal(await preview.locator('p').textContent(),narration.path);
+    assert.equal(await preview.locator('audio').evaluate(async audio=>{
+      const bytes=await (await fetch(audio.src)).arrayBuffer(),hash=await crypto.subtle.digest('SHA-256',bytes);
+      return [...new Uint8Array(hash)].map(value=>value.toString(16).padStart(2,'0')).join('');
+    }),narration.hash);
+    await preview.getByRole('button',{name:'返回'}).click();
+    const native=await host.page.evaluate(async ()=>{
+      const c=SillyTavern.getContext(),message=c.chat.find(m=>m.extra?.miemie_lobby_result);
+      const data=await new Promise(resolve=>{
+        const reader=new FileReader();reader.onload=()=>resolve(reader.result.split(',')[1]);reader.readAsDataURL(window.fixtureImage);
+      });
+      const response=await fetch('/api/images/upload',{method:'POST',headers:c.getRequestHeaders(),body:JSON.stringify({
+        image:data,format:'png',filename:'collaboration-fixture',ch_name:'Lobby Native Fixture',
+      })});
+      if(!response.ok)throw Error('无法创建原生附件样本');
+      const {path}=await response.json();
+      message.extra.media=[{type:'image',url:path}];
+      await c.saveChat();
+      await c.eventSource.emit(c.eventTypes.MESSAGE_UPDATED,c.chat.indexOf(message));
+      return path;
+    });
+    await action(guest).getByRole('button',{name:'collaboration-fixture.png'}).click();
+    assert.equal(await preview.locator('p').textContent(),decodeURIComponent(native.replace(/^\//,'')));
+    assert.equal(await assetHash(),first.hash);
+    await preview.getByRole('button',{name:'返回'}).click();
+    await guest.reload();
+    await guest.main.locator('[data-field="resumePassword"]').fill(fixturePassword);
+    await guest.click('resume-guest');
+    await guest.main.getByText('地图已同步 · 联机对话已打开').waitFor();
+    await openTool(guest,'action');
+    await action(guest).locator('[data-detail=history] summary').click();
+    await action(guest).getByRole('button',{name:'插图.png'}).click();
+    assert.equal(await assetHash(),first.hash);
+    await preview.getByRole('button',{name:'返回'}).click();
+    assert.match(await action(guest).locator('.mm-story').innerText(),/扩展写回后的正文/);
+    console.log('PASS collaboration registration, live status, private-status redaction, native and registered images, audio, cached media after reconnect');
+  }
   const guestOriginal=await guest.page.evaluate(()=>SillyTavern.getContext().getCurrentChatId());
   const reroll=action(host).locator('[data-act^="reroll:"]');
   await reroll.click();

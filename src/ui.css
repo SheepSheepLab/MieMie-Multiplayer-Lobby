@@ -233,3 +233,20 @@
 .mm-lobby .mm-script-sync p + p {border-top:1px solid #2e3d47}
 .mm-lobby .mm-script-sync h3 {padding:8px 10px;border-top:1px solid #574c38}
 .mm-lobby .mm-script-sync p small {margin-inline-start:auto;color:#a6bdc4}
+
+.mm-lobby .mm-extension-row {display:flex;flex-wrap:wrap;gap:7px 12px;align-items:center;justify-content:space-between}
+.mm-lobby .mm-extension-row small {color:#a8bfc7}
+.mm-lobby .mm-attachment-row {display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:6px 0}
+.mm-lobby .mm-attachment-row small {margin-inline-start:auto;color:#a7c1c6}
+.mm-lobby .mm-attachment-row button {max-inline-size:100%;overflow-wrap:anywhere}
+.mm-lobby.mm-attachment-preview {width:min(640px,92vw);max-height:88dvh;overflow:auto;padding:0;color:#f0e2bf;
+ background:#0b1923;border:1px solid #ab8c57;border-radius:8px}
+.mm-attachment-preview::backdrop {background:rgba(4,11,17,.7)}
+.mm-attachment-preview section {padding:16px;overflow-wrap:anywhere}
+.mm-attachment-preview h2 {font-size:1.1rem;margin:0}
+.mm-attachment-preview p {color:#98b2bb}
+.mm-attachment-preview img {max-width:100%;max-height:64dvh;display:block;margin:auto;object-fit:contain}
+.mm-attachment-preview audio {width:100%}
+.mm-attachment-preview footer {display:flex;align-items:center;justify-content:space-between;margin-top:12px}
+.mm-attachment-preview a {color:#efd69d}
+.mm-lobby-native-attachments {display:flex;flex-wrap:wrap;gap:.5em;margin-block:.5em}

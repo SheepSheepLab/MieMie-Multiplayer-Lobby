@@ -98,6 +98,7 @@ export function createViews(drafts:any){
  ${!isHost&&v.hostChatPaused?'<p class="mm-session-pause" role="status">房主暂时切换了聊天，房间和已提交的行动保留。</p>':''}
  ${sceneFields.some(([key])=>v.scene?.[key])?`<details data-detail="public-scene" class="mm-public-scene" open><summary>公开场景资料</summary>${sceneFields.map(([key,label])=>v.scene?.[key]?`<section><h3>${label}</h3><p>${escape(v.scene[key])}</p></section>`:'').join('')}</details>`:''}
  ${roomMap(c)}
+ ${extensionSync(c)}
  ${scriptSync(c)}
  ${c.transcriptError?'<p class="mm-session-pause" role="status">联机对话写入失败。'+button('transcript-retry','重试写入',false,'mm-text-button')+'</p>':''}
  <div class="mm-room-meta"><span>${phaseName[v.phase]} · 第 ${v.round} 回合</span><span>${players.length} / ${v.capacity||4} 席</span></div>
@@ -116,6 +117,36 @@ export function createViews(drafts:any){
    ${scripts.map(s=>`<p><strong>${escape(s.name)}</strong><small>${scopes[s.scope]} · ${s.scope==='global'?'各端本地运行':c.mode==='host'?(c.view.mapsReady?'已同步':'等待同步'):(c.mapSync?.state==='ready'?'已同步':'同步中')}</small></p>`).join('')}
    ${processors.length?'<h3>同步前需等待</h3>':''}${processors.map(p=>`<p><strong>${escape(p.name)}</strong><small>${!p.enabled?'本房间已停用':!p.available?'脚本自动处理未启用':states[p.state]}</small>${c.mode==='host'?button('processor:'+p.id,p.enabled?'停用':'启用',c.view.phase==='generating','mm-text-button'):''}</p>`).join('')}
   </details>`;
+ }
+ function extensionSync(c:any){
+  const extensions=c.view.extensions??[];
+  if(!extensions.length)return '';
+  const capabilities={status:'状态',image:'图片共享',audio:'音频共享'};
+  const states={working:'处理中',complete:'已完成',failed:'处理失败'};
+  return `<details class="mm-history mm-script-sync" data-detail="collaboration" open>
+   <summary>已支持的扩展 <small>${extensions.length}</small></summary>
+   ${extensions.map(extension=>{
+    const status=extension.status;
+    const result=status&&c.view.results.find(row=>row.id===status.resultId);
+    const textOnly=!extension.capabilities.some(name=>name==='image'||name==='audio');
+    const receipt=textOnly&&status?.state==='complete'?result?.displayReceipts:null;
+    const note=status?(status.label||states[status.state]):'已连接';
+    return `<p class="mm-extension-row"><strong>${escape(extension.name)}</strong>
+     <small>${extension.capabilities.map(name=>capabilities[name]).filter(Boolean).join(' · ')}</small>
+     <span>${result?'第 '+result.round+' 回合 · ':''}${escape(note)}${textOnly&&status?.state==='working'?' · 当前为初稿':''}
+      ${receipt?' · 已送达 '+receipt.sent+'/'+receipt.total:''}</span></p>`;
+   }).join('')}
+  </details>`;
+ }
+ function attachments(c:any,r:any){
+  return (r.attachments??[]).map((entry,index)=>{
+   const status=c.mode==='host'?'ready':c.attachments.status(entry.hash);
+   const name=entry.path.split('/').at(-1);
+   const label=status==='failed'?'重试 '+name:name;
+   const state=status==='failed'?'同步失败':status==='pending'?'同步中':'已送达 '+entry.receipts.sent+'/'+entry.receipts.total;
+   return `<div class="mm-attachment-row">${button('attachment:'+r.id+':'+index,escape(label),status==='pending','mm-text-button')}
+    <small>${state}</small></div>`;
+  }).join('');
  }
  function action(c:any,busy:boolean,turn:any){
   const v=c.view,isHost=c.mode==='host',players=v.players.filter(Boolean);
@@ -139,6 +170,7 @@ export function createViews(drafts:any){
   ${canVote?'<div class="mm-row">'+button('vote:yes','赞成',false,'primary')+button('vote:no','反对')+'</div>':''}
  </section>`:''}
  ${(v.processors??[]).some(p=>['waiting','running','done'].includes(p.state))?scriptSync(c):''}
+ ${extensionSync(c)}
  <section class="mm-current-actions" aria-label="本轮行动">
   <div class="mm-action-section-title"><h3>本轮行动</h3><span>${actions.size} / ${players.length} 已提交</span></div>
   ${players.map(p=>{
@@ -162,6 +194,7 @@ export function createViews(drafts:any){
   ${v.results.map((r,i)=>`<article class="mm-story"><small>第 ${r.round} 回合${floors.has(r.id)?' · 酒馆第 '+floors.get(r.id)+' 楼':''}</small>
    ${r.actions?.map(a=>`<p class="mm-past-action"><strong>${escape(a.name)}</strong> ${a.submitted?'暗行动已锁定':escape(a.content)}</p>`).join('')||''}
    <p>${escape(r.story)}</p>${r.status?`<small>我的状态</small><pre>${escape(r.status)}</pre>`:''}
+   ${attachments(c,r)}
    ${floors.has(r.id)?button('branch:'+r.id,'从此楼发起分支投票',!canPropose,'mm-text-button'):v.map?'':button('append:'+i,'写入当前聊天',appendDisabled,'mm-text-button')}</article>`).reverse().join('')}
  </details>`:''}
  </div>
