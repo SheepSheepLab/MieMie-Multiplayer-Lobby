@@ -194,7 +194,41 @@ export function createTavernMapAdapter(host, context, helper) {
 
   function refreshMapPreset(binding, inLinkedChat) {
     if (!inLinkedChat) releaseMapPreset();
-    else if (!presetLease && binding?.presetName) openMapPreset(binding);
+    else if (!presetLease && binding?.presetName) {
+      openMapPreset(binding);
+      const lease=presetLease;
+      if(binding.presetRegexes) void redrawRoomRegexes(binding,{enablePresetRegexes:true},()=>presetLease===lease)
+        .catch(error=>console.warn('[咩咩联机大厅] 预设正则刷新失败',error.message));
+    }
+  }
+
+  async function redrawRoomRegexes(binding, assets, isCurrent) {
+    if(!assets.enableRegexes && !assets.enablePresetRegexes)return;
+    const {avatar,chatId}=binding.chatRef;
+    const onChat=()=>{
+      const c=context();
+      return isCurrent()&&c?.getCurrentChatId?.()===chatId&&c.characters?.[c.characterId]?.avatar===avatar&&!c.groupId;
+    };
+    if(!onChat())return;
+    if(assets.enablePresetRegexes){
+      const rules=name=>JSON.stringify(helper.getPreset(name)?.extensions?.regex_scripts??[]);
+      const expected=rules(binding.presetName);
+      const deadline=Date.now()+4000;
+      // SillyTavern selects the preset before its async hooks apply the regex rules.
+      while(onChat() && (helper.getLoadedPresetName()!==binding.presetName || rules('in_use')!==expected)){
+        if(Date.now()>=deadline)throw Error('酒馆尚未应用联机预设正则，请重试刷新');
+        await new Promise(resolve=>setTimeout(resolve,25));
+      }
+    }
+    if(!onChat())return;
+    const c=context();
+    if(typeof c.updateMessageBlock!=='function')throw Error('当前酒馆无法刷新联机对话的正则显示');
+    // Use Tavern's formatter on the mounted floors and keep the live chat in memory.
+    for(const node of host.document.querySelectorAll('#chat > .mes[mesid]')){
+      const index=Number(node.getAttribute('mesid'));
+      const message=c.chat[index];
+      if(message)c.updateMessageBlock(index,message);
+    }
   }
 
   async function editCard(avatar, existing, card) {
@@ -328,5 +362,6 @@ export function createTavernMapAdapter(host, context, helper) {
       && (!assets.enablePresetRegexes || !!settings?.preset_allowed_regex?.openai?.includes(preset));
   }
 
-  return {mapStore:store,captureRoomMap,findLocalRoomMap,installRoomMap,verifyRoomMap,roomAssetsEnabled,refreshMapPreset,releaseMapPreset};
+  return {mapStore:store,captureRoomMap,findLocalRoomMap,installRoomMap,verifyRoomMap,roomAssetsEnabled,redrawRoomRegexes,
+    refreshMapPreset,releaseMapPreset};
 }

@@ -110,3 +110,8 @@ Edge 运行两套隔离酒馆（SillyTavern 1.19.0 / 1.18.0）通过地图下载
 55 项 Node 测试通过。新增状态能力与附件能力的注册校验、旧楼层句柄失效、附件路径规则、损坏文件拒绝保存和缓存复用。
 Edge 的两套隔离 SillyTavern 1.19.0 / 1.18.0 验证扩展上报、公开正文写回和个人状态隔离。测试扩展共享 PNG 和 WAV，酒馆原生图片也自动同步。来宾预览的校验值与房主一致，刷新后可用本地缓存。使用 MIEMIE_TEST_COLLABORATION=1 MIEMIE_LOBBY_BROWSER=edge node tests/tavern-room-resume.mjs 复测。
 通过四客户端 WebRTC、Hub 1.1.0 WebKit Runtime 与 Managed Package 回归。香港 TURN 复测转发 512 KiB 测试音频附件，来宾保存并确认送达。成品在独立 Safari 酒馆环境可加载并打开。第三方生图及语音扩展的实际后端与完整接入由各作者自行验收。
+
+0.9.1 联机正则显示与切换回复保护 · 2026-11-16
+55 项 Node 测试通过。Edge 上以隔离的 SillyTavern 1.19.0 房主和 1.18.0 来宾完成联机测试。来宾启用角色和预设正则后，已有楼层自动应用两类显示规则，预设更新后再次重绘，原始聊天文本保留。
+验证房主和来宾联机对话中的回复编号会拦截点击、键盘、触摸和右键事件，切换到普通对话后恢复。联机重连、房主快捷返回、附件与扩展状态通过同一套回归。Hub WebKit Runtime 与 Managed Package 独立通过。备用账号的 Safari 确认载入 0.9.1。
+此轮 Edge 联机使用本机 WebRTC，Windows 台式机和 TT 实机仍待复测。

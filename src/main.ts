@@ -44,7 +44,7 @@ function boot(){
  const content=frame.querySelector<HTMLElement>('.mm-main-body')!;
  const header=createLobbyHeader(frame.querySelector<HTMLElement>('.mm-subtitle')!,()=>host.SillyTavern?.getContext(),
   ()=>{
-   controller?.refreshHostChat();controller?.checkRoomAssets();refreshLinkedChat();
+   controller?.refreshHostChat();void controller?.checkRoomAssets();refreshLinkedChat();
    if(controller&&!controller.view&&entryTab==='create'&&hostChatAvailable!==canHost())render();
   },refreshPersonas);
  frame.querySelector('[data-act="settings"]')!.append(createIcon(doc,'settings'));
@@ -298,7 +298,8 @@ function boot(){
     await controller.installRoomMap();
    }
    else if(action==='map-check'){
-    if(!controller.checkRoomAssets())notice='请在酒馆启用此联机角色的随包脚本和正则后再准备。';
+    if(!await controller.checkRoomAssets()&&controller.mapSync?.state!=='asset-error')
+     notice='请打开联机对话并启用随包脚本和正则后再准备。';
    }
    else if(action==='map-retry')controller.requestRoomMap();
    else if(action==='transcript-retry'){controller.transcriptError='';refreshLinkedChat();}

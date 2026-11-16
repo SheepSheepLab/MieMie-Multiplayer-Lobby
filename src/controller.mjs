@@ -272,7 +272,7 @@ export class Controller {
     if(current()&&allowed){
      const binding=await this.adapter.verifyRoomMap(sync.roomId,descriptor.hash,current,this.mapChat);
      if(current()&&binding){
-      this.mapChat=binding;sync.assets=allowed;sync.state='enable-assets';this.checkRoomAssets();this.emit();return;
+      this.mapChat=binding;sync.assets=allowed;sync.state='enable-assets';await this.checkRoomAssets();this.emit();return;
      }
     }
     if(current()&&descriptor.resources&&this.adapter.findLocalRoomMap){
@@ -353,13 +353,28 @@ export class Controller {
    this.mapChat=binding;
    sync.state='enable-assets';sync.map=null;
    if(this.view.map?.hash!==sync.descriptor.hash)this.prepareRoomMap();
-   else this.checkRoomAssets();
+   else await this.checkRoomAssets();
   }catch(error){this.failMap(sync,error.message);}
   this.emit();
  }
- checkRoomAssets(){
-  const sync=this.mapSync;
-  if(sync?.state!=='enable-assets'||!this.mapChat||!this.adapter.roomAssetsEnabled(this.mapChat,sync.assets))return false;
+ async checkRoomAssets(){
+  const sync=this.mapSync,binding=this.mapChat;
+  if(sync?.state==='refreshing-assets'||sync?.state==='ready')return true;
+  const current=()=>this.mapSync===sync&&!this.closed&&this.view?.id===sync.roomId
+   &&this.view?.map?.hash===sync.descriptor.hash&&this.adapter.matchesChat?.(binding)!==false;
+  if(!['enable-assets','asset-error'].includes(sync?.state)||!binding||!current()||!this.adapter.roomAssetsEnabled(binding,sync.assets))return false;
+  if(this.adapter.redrawRoomRegexes&&(sync.assets.enableRegexes||sync.assets.enablePresetRegexes)){
+   sync.state='refreshing-assets';sync.error='';this.emit();
+   try{
+    await this.adapter.redrawRoomRegexes(binding,sync.assets,current);
+   }catch(error){
+    if(current()){sync.state='asset-error';sync.error=error.message;this.emit();return false;}
+   }
+   if(!current()){
+    if(this.mapSync===sync){sync.state='enable-assets';this.emit();}
+    return false;
+   }
+  }
   sync.state='ready';sync.sent=!!this.connection?.open&&this.seatedConnection===this.connection;
   if(sync.sent){this.connection.send({type:'map-ready',hash:sync.descriptor.hash});this.resendRequests();}
   if(sync.sent)void this.attachments.pump();

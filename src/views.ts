@@ -67,6 +67,8 @@ export function createViews(drafts:any){
   if(!c.view.map)return '';
   if(sync?.state==='ready')return '<p class="mm-fine-print">地图已同步 · 联机对话已打开</p>';
   if(sync?.state==='enable-assets')return '<div class="mm-session-pause" role="status">联机对话已打开。请在酒馆启用随包脚本与正则。'+button('map-check','检查启用状态',false,'mm-text-button')+'</div>';
+  if(sync?.state==='refreshing-assets')return '<p class="mm-session-pause" role="status">正在刷新联机对话的正则显示…</p>';
+  if(sync?.state==='asset-error')return '<div class="mm-session-pause" role="status">'+escape(sync.error)+button('map-check','重试刷新',false,'mm-text-button')+'</div>';
   if(sync?.state==='error')return '<div class="mm-session-pause" role="status">'+escape(sync.error)+button('map-retry','重新同步地图',false,'mm-text-button')+'</div>';
   if(sync?.state==='confirm'){
    const assets=sync.assets, scripts=assets.scripts.slice(0,8);

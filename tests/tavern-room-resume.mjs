@@ -96,7 +96,7 @@ try {
       if (!c.characters.some(card => card.name === fixtureCard)) {
         const card = new FormData();
         card.set('ch_name', fixtureCard);
-        card.set('first_mes', '开场正文');
+        card.set('first_mes', '开场正文 FIXTURE_NEVER_MATCH FIXTURE_PRESET_NEVER_MATCH');
         card.set('description', cardSecret);
         card.set('creator_notes', '地图资源分片测试。'.repeat(7000));
         await createCard(card);
@@ -126,13 +126,13 @@ try {
       }
       await TavernHelper.replaceTavernRegexes([{
         id:crypto.randomUUID(),script_name:'同步测试正则',enabled:true,find_regex:'FIXTURE_NEVER_MATCH',
-        replace_string:'REPLACED',trim_strings:[],source:{ai_output:true},destination:{display:true,prompt:false},
+        replace_string:'FIXTURE_CARD_RENDERED',trim_strings:[],source:{ai_output:true},destination:{display:true,prompt:false},
         run_on_edit:false,min_depth:null,max_depth:null,
       }],{type:'character'});
       const preset=TavernHelper.getPreset('in_use');
       preset.extensions.regex_scripts=[{
         id:crypto.randomUUID(),script_name:'预设状态栏正则',enabled:true,find_regex:'FIXTURE_PRESET_NEVER_MATCH',
-        replace_string:'REPLACED',trim_strings:[],source:{ai_output:true},destination:{display:true,prompt:false},
+        replace_string:'FIXTURE_PRESET_RENDERED',trim_strings:[],source:{ai_output:true},destination:{display:true,prompt:false},
         run_on_edit:false,min_depth:null,max_depth:null,
       }];
       await TavernHelper.createPreset(fixturePreset,preset);
@@ -177,6 +177,37 @@ try {
   const code = await host.main.locator('.mm-invite').inputValue();
   assert.match(code, /^\d{6}$/);
   await host.page.waitForFunction(()=>document.querySelector('#send_textarea').readOnly);
+  async function verifySwipePickerGate(player,locked) {
+    const result=await player.page.locator('#chat > .mes[mesid="0"] .swipes-counter').evaluate(counter=>{
+      const control=document.createElement('span');
+      counter.append(control);
+      const events=[
+        new MouseEvent('click',{bubbles:true,cancelable:true}),
+        new KeyboardEvent('keydown',{key:' ',bubbles:true,cancelable:true}),
+        new KeyboardEvent('keydown',{key:'Enter',bubbles:true,cancelable:true}),
+        new Event('touchstart',{bubbles:true,cancelable:true}),
+        new MouseEvent('contextmenu',{bubbles:true,cancelable:true}),
+      ];
+      const received=[];
+      const listener=event=>{
+        if(event.target!==control)return;
+        received.push(event.type);
+        event.preventDefault();
+        event.stopImmediatePropagation();
+      };
+      const types=[...new Set(events.map(event=>event.type))];
+      for(const type of types)document.addEventListener(type,listener,true);
+      try{
+        for(const event of events)control.dispatchEvent(event);
+        return received;
+      }finally{
+        for(const type of types)document.removeEventListener(type,listener,true);
+        control.remove();
+      }
+    });
+    assert.deepEqual(result,locked?[]:['click','keydown','keydown','touchstart','contextmenu']);
+  }
+  await verifySwipePickerGate(host,true);
   const linkedChat=host.main.getByRole('region',{name:'联机对话'});
   assert.equal(await linkedChat.locator('strong').textContent(),fixtureCard);
   assert.equal(await linkedChat.locator('small').textContent(),originalChat);
@@ -203,6 +234,9 @@ try {
       await guest.open();
     }
     await guest.main.getByText('地图已同步 · 联机对话已打开').waitFor();
+    const opening=guest.page.locator('#chat > .mes[mesid="0"] .mes_text');
+    assert.match(await opening.innerText(),/FIXTURE_CARD_RENDERED.*FIXTURE_PRESET_RENDERED/);
+    assert.match(await guest.page.evaluate(()=>SillyTavern.getContext().chat[0].mes),/FIXTURE_PRESET_NEVER_MATCH/);
     assert.equal(await guest.main.getByRole('region',{name:'联机对话'}).count(),1);
     await guest.page.waitForFunction(()=>window.__miemieFixtureCardScript);
     assert.deepEqual(await guest.page.evaluate(async ({secret,preset})=>{
@@ -241,6 +275,8 @@ try {
   },{book:fixtureBooks[2],preset:fixturePreset});
   await guest.click('map-confirm');
   await guest.main.getByText('地图已同步 · 联机对话已打开').waitFor();
+  assert.match(await guest.page.locator('#chat > .mes[mesid="0"] .mes_text').innerText(),/FIXTURE_CARD_RENDERED.*LOBBY_LIVE_PRESET_UPDATE/);
+  await verifySwipePickerGate(guest,true);
   assert.equal(guestAvatarWrites,1);
   assert.deepEqual(await guest.page.evaluate(async ({book,preset})=>{
     const c=SillyTavern.getContext();
@@ -284,6 +320,7 @@ try {
       if(String(SillyTavern.getContext().characterId)!==String(index))throw Error('Failed to switch cards');
     },sideCard);
     await host.page.waitForFunction(()=>!document.querySelector('#send_textarea').readOnly);
+    await verifySwipePickerGate(host,false);
   }
   await host.open();
   await returnToChat();

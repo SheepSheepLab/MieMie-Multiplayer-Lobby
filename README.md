@@ -1,10 +1,10 @@
 # 咩咩联机大厅 / MieMie Multiplayer Lobby
 
 咩咩联机大厅是开发中的 2–4 人 SillyTavern AIRP 工具。由房主运行 AI，队友共享剧情并接收各自的状态栏。房间支持公开与暗行动、队伍聊天及断线恢复。
-当前开发基线：0.9.0。唯一版本源为 package.json；构建器校验锁文件及 Manifest，并生成脚本名称和文件名，UI 读取同一版本。
+当前开发基线：0.9.1。唯一版本源为 package.json；构建器校验锁文件及 Manifest，并生成脚本名称和文件名，UI 读取同一版本。
 产品作者及生态发起人为 SheepSheep。SheepSheepLab 是官方开发、维护与发布命名空间。
 官方源码和测试版安装包通过 [SheepSheepLab/MieMie-Multiplayer-Lobby](https://github.com/SheepSheepLab/MieMie-Multiplayer-Lobby) 提供。
-本地执行 `npm ci` 和 `npm run build` 后，可将生成的 `dist/MieMie-Multiplayer-Lobby-Extension-0.9.0.json` 导入酒馆助手全局脚本。在酒馆笑脸中保存 Persona 后，大厅会更新身份。由 0.9.0 房主创建或恢复的地图房间需所有玩家使用 0.9.0 或更新版本。当前仍需验证不同公网网络间的互通和实际模型长回合。
+本地执行 `npm ci` 和 `npm run build` 后，可将生成的 `dist/MieMie-Multiplayer-Lobby-Extension-0.9.1.json` 导入酒馆助手全局脚本。在酒馆笑脸中保存 Persona 后，大厅会更新身份。由 0.9.0 房主创建或恢复的地图房间需所有玩家使用 0.9.0 或更新版本。当前仍需验证不同公网网络间的互通和实际模型长回合。
 0.5.1 的大厅主标题与其他咩咩工具对齐，副标题实时显示当前打开的单人角色聊天。
 
 ## 酒馆版本与运行条件
